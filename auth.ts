@@ -36,6 +36,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/auth/signin',
   },
   callbacks: {
+     async signIn({ user }) {
+      const allowedEmails = ['jaicuyler@gmail.com', 'teammate@example.com'];
+      const allowedDomain = '@mycompany.com';
+
+      if (user?.email) {
+        if (allowedEmails.includes(user.email)) return true;
+        if (user.email.endsWith(allowedDomain)) return true;
+      }
+
+      return false;
+    },
     authorized({ auth: session, request: { nextUrl } }) {
       const isLoggedIn = !!session?.user;
       const isPublicPage = nextUrl.pathname.startsWith('/public');

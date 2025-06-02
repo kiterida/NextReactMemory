@@ -10,7 +10,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 
-import type { Navigation } from '@toolpad/core/AppProvider';
+//import type { Navigation } from '@toolpad/core/AppProvider';
 import { SessionProvider, signIn, signOut } from 'next-auth/react';
 import { auth } from '../auth';
 import theme from '../theme';
@@ -28,6 +28,20 @@ export const metadata = {
   title: 'Memory Core',
   description: 'This is a sample app built with Toolpad Core and Next.js',
 };
+
+// Remove this (it's invalid)
+// import type { Navigation } from '@toolpad/core/AppProvider';
+
+// Add this instead
+type Navigation = {
+  kind?: 'header' | 'page';
+  segment?: string;
+  title: string;
+  icon?: React.ReactNode;
+  href?: string;
+  pattern?: string;
+}[];
+
 
 const NAVIGATION: Navigation = [
   {

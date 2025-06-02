@@ -24,6 +24,30 @@ interface MemoriesViewProps {
   focusId?: string | null; // or just `string` depending on your logic
 }
 
+type MemoryItem = {
+  id: string;
+  name?: string;
+  description?: string;
+  parent_id?: string | null;
+  code_snippet?: string;
+  memory_key?: string;
+  memory_image?: string;
+  starred?: boolean;
+};
+
+export interface MemoryTreeItem {
+  id: string;
+  name?: string;
+  description?: string;
+  parent_id?: string | null;
+  code_snippet?: string;
+  memory_key?: string;
+  memory_image?: string;
+  starred?: boolean;
+  // ... add any other fields your items have (like `title`, `starred`, etc.)
+  children?: MemoryTreeItem[];
+}
+
 const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => {
 
   const [availableHeight, setAvailableHeight] = useState<number | null>(null);
@@ -37,19 +61,20 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
   const apiRef = useTreeViewApiRef();
 
-  const [treeData, setTreeData] = useState([]);
+  const [treeData, setTreeData] = useState<MemoryTreeItem[]>([]);
+  //const [treeData, setTreeData] = useState([]);
 
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedItem, setSelectedItem] = useState<MemoryItem | null>(null);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
-  const [expandedItemId, setExpandedItemId] = useState(null); // Track the expanded item
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null); // Track the expanded item
   const [newItemId, setNewItemId] = useState(null);
 
   const [showSnackBar, setShowSnackBar] = useState(false);
 
-  const handleClick = (event: React.MouseEvent, item) => {
+  const handleClick = (event: React.MouseEvent, item: MemoryItem) => {
     if (event.metaKey || event.ctrlKey) {
-       console.log("ctrl key pressed");
+      console.log("ctrl key pressed");
       if (selectedItems.includes(item.id)) {
         setSelectedItems(selectedItems.filter((id) => id !== item.id));
       } else {
@@ -59,14 +84,14 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
       setSelectedItems([item.id]);
       setSelectedItem(item);
     }
-    
-    
+
+
 
   };
 
   useEffect(() => {
-  console.log("Selected items updated:", selectedItems);
-}, [selectedItems]);
+    console.log("Selected items updated:", selectedItems);
+  }, [selectedItems]);
 
 
 
@@ -137,10 +162,12 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
       for (const ancestor of ancestors) {
         console.log("setItemExpansion: ", ancestor);
-        apiRef.current.setItemExpansion({
-          itemId: String(ancestor),
-          shouldBeExpanded: true,
-        });
+        if (apiRef.current) {
+          apiRef.current.setItemExpansion({
+            itemId: String(ancestor),
+            shouldBeExpanded: true,
+          });
+        }
       }
 
       // Step 2: Scroll into view after a short delay to ensure it's rendered
@@ -163,25 +190,10 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     }
   }, [focusId, treeData]); // Add treeData here to ensure data is ready
 
-  function findNodeById(tree, id) {
-    for (const node of tree) {
-      if (node.id == id) {
-        return node;
-      }
-      if (node.children) {
-        const found = findNodeById(node.children, id);
-        if (found) {
-          return found;
-        }
-      }
-    }
-    return null;
-  }
+  function getAllAncestorIds(searchId: string, tree: MemoryTreeItem[]) {
+    const path: string[] = [];
 
-  function getAllAncestorIds(searchId, tree) {
-    const path = [];
-
-    function findAndTrack(node, parentPath = []) {
+    function findAndTrack(node: MemoryTreeItem, parentPath: string[] = []) {
 
       if (node.id == searchId) {
         path.push(...parentPath); // found it! collect the path
@@ -210,10 +222,12 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
   const expandTest = () => {
     console.log("do it");
-    apiRef.current.setItemExpansion({
-      itemId: String("1"),
-      shouldBeExpanded: true,
-    });
+    if (apiRef.current) {
+      apiRef.current.setItemExpansion({
+        itemId: String("1"),
+        shouldBeExpanded: true,
+      });
+    }
   }
 
 
@@ -224,9 +238,9 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     }
   }, [expandedItemId, newItemId]); // Runs when either treeData or expandedItemId changes
 
-  const handleDropUpdate = async (draggedItemId, newParentId) => {
-    if (newParentId === 'null') {
-      newParentId = null;
+  const handleDropUpdate = async (draggedItemId: string, newParentId: string) => {
+    if (newParentId == "") {
+      newParentId = "";
     }
     const allItems = Array.from(new Set([...selectedItems, draggedItemId]));
     console.log("allItems: ", allItems);
@@ -235,7 +249,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     setTreeData(data);
   };
 
-  const showMessage = (msg) => {
+  const showMessage = (msg: string) => {
     setShowSnackBar(true);
   }
 
@@ -252,16 +266,16 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     if (!selectedItem) return;
 
     // Function to recursively delete items and their children
-    const deleteItemAndChildren = async (itemId) => {
-      // First, delete all child items
+    const deleteItemAndChildren = async (itemId: string) => {
       const { data: children } = await supabase
         .from('memory_items')
         .select('id')
         .eq('parent_id', itemId);
 
-      // Recursively delete all children
-      for (const child of children) {
-        await deleteItemAndChildren(child.id);
+      if (children) {
+        for (const child of children) {
+          await deleteItemAndChildren(child.id);
+        }
       }
 
       // Then, delete the current item
@@ -275,6 +289,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
       }
     };
 
+
     // Delete the selected item and all its children
     await deleteItemAndChildren(selectedItem.id);
 
@@ -283,7 +298,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     getTreeData();
   };
 
-  const handleCreateNewChild = async (parentId) => {
+  const handleCreateNewChild = async (parentId: string) => {
     try {
 
       const parentIdValue = parentId === "null" ? null : parentId;
@@ -328,7 +343,9 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           ? highestMemoryKeyData[0].memory_key + 1  // Set to 1 if no rows exist
           : 0;
 
-        console.log('highestMemoryKeyData', highestMemoryKeyData[0])
+        if (highestMemoryKeyData) {
+          console.log('highestMemoryKeyData', highestMemoryKeyData[0])
+        }
 
         if (highestMemoryKeyError) {
           throw new Error("Error fetching highest memory_key: " + highestMemoryKeyError.message);
@@ -372,20 +389,23 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     }
   };
 
-  const mapTreeData = (data, isRoot = true) => {
-    const result = ((isRoot && filterStarred) ? data.filter((item) => item.starred !== false) : data) // Apply filter only at root level
-      .map((item) => (
+  const mapTreeData = (data: MemoryTreeItem[], isRoot = true) => {
+
+  
+    const result = ((isRoot && filterStarred) ? data.filter((item) => item.starred !== false) : data) // Apply filter only at root level  
+    .map((item) => (
+        //<div>{item.id}</div>
         <DraggableTreeItem
           key={item.id}
           item={item}
-          itemId={item.id}
+          //itemId={item.id}
           onDropUpdate={handleDropUpdate}
           onSelectItem={handleClick}
           onCreateNewChild={handleCreateNewChild}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
-      ));
+    ));
     return result;
   };
 
@@ -398,10 +418,12 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     // Check if expandedItemId is set
     if (expandedItemId) {
       console.log("Expanding item with id ", expandedItemId);
-      apiRef.current.setItemExpansion({
-        itemId: String(expandedItemId),
-        shouldBeExpanded: true,
-      });
+      if (apiRef.current) {
+        apiRef.current.setItemExpansion({
+          itemId: String(expandedItemId),
+          shouldBeExpanded: true,
+        });
+      }
 
       // Step 2: Scroll into view after a short delay to ensure it's rendered
       setTimeout(() => {
@@ -443,6 +465,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
       >
         <DndProvider backend={HTML5Backend}>
           <SimpleTreeView
+            multiSelect
             apiRef={apiRef}
             selectedItems={selectedItems.map(String)} // IDs must be strings
           >
@@ -458,7 +481,6 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           width: { xs: '100%', lg: '65%' },
           overflow: 'auto',
           height: { xs: '50%', lg: '100%' },
-          width: { lg: '65%' },
           pl: 2,
         }}
       >

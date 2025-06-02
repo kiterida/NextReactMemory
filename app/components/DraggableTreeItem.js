@@ -18,8 +18,8 @@ const DraggableTreeItem = ({
   onDropUpdate,
   onSelectItem,
   onCreateNewChild,
-  expandedItemId,
-  setExpandedItemId,
+  //expandedItemId,
+ // setExpandedItemId,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -65,20 +65,21 @@ const DraggableTreeItem = ({
     ,
   });
 
-  const handleExpandChange = () => {
-    if (item && expandedItemId !== null) {
-      if (expandedItemId === item.id) {
-        setExpandedItemId(null); // Collapse if the item is already expanded
-      } else {
-        setExpandedItemId(item.id); // Expand the selected item
-      }
-    }
-  };
+  // const handleExpandChange = () => {
+  //   if (item && expandedItemId !== null) {
+  //     if (expandedItemId === item.id) {
+  //       setExpandedItemId(null); // Collapse if the item is already expanded
+  //     } else {
+  //       setExpandedItemId(item.id); // Expand the selected item
+  //     }
+  //   }
+  // };
 
   const getSubItemCount = (item) => {
     return item.children ? item.children.length : 0;
   };
 
+  console.log("item id: ", item.id);
 
   return (
     <TreeItem

@@ -14,7 +14,7 @@ export default async function HomePage() {
       </Typography>
       <div>Todo</div>
       <div>I want a todo list here</div>
-      <div>Need an add button on this page that allows you to add widgets to the dashboardd like 'To Do List', 'Current Memory List', 'Current Project'. etc</div>
+      <div>Need an add button on this page that allows you to add widgets to the dashboardd like &lsquo;To Do List&lsquo;, &lsquo;Current Memory List&lsquo;, &lsquo;Current Project&lsquo;. etc</div>
       <Box sx={{ p: 2, mt:2, width: '100%', backgroundColor: 'grey'}}>
         <Box>
           <Typography>Create new table for app settings, widgets, etc..</Typography>

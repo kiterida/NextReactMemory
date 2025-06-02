@@ -19,10 +19,17 @@ import ListItemText from '@mui/material/ListItemText';
 import ClickAwayListener from '@mui/material/ClickAwayListener';
 import { useRouter } from 'next/navigation';
 
+type MemoryItem = {
+  id: string;
+  name?: string;
+};
+
 // ✅ Stable toolbar with internal state
 function ToolbarActionsSearch() {
   const [searchText, setSearchText] = React.useState('');
-   const [results, setResults] = React.useState([]);
+//   const [results, setResults] = React.useState([]);
+  //
+  const [results, setResults] = React.useState<{ id: string; name?: string }[]>([]);
   const [showResults, setShowResults] = React.useState(false);
   const router = useRouter();
 
@@ -38,7 +45,7 @@ function ToolbarActionsSearch() {
     }
   };
 
-  const handleSelect = (item) => {
+  const handleSelect = (item: MemoryItem) => {
     setShowResults(false);
     setSearchText('');
     // Navigate to the memory tree and maybe pass the selected item's ID as a query param or route param

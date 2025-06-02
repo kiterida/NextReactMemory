@@ -7,7 +7,8 @@ import {
   PageHeader,
   PageHeaderToolbar,
 } from '@toolpad/core/PageContainer';
-import { AppProvider } from '@toolpad/core/AppProvider';
+import { NextAppProvider } from '@toolpad/core/nextjs';
+//import  AppProvider  from '@toolpad/core/AppProvider';
 import { LocalizationProvider } from '@mui/x-date-pickers-pro/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers-pro/AdapterDayjs';
 import { SingleInputDateRangeField } from '@mui/x-date-pickers-pro/SingleInputDateRangeField';
@@ -25,7 +26,7 @@ const NAVIGATION = [
 ];
 
 // preview-start
-function CustomPageToolbar({ status }) {
+function CustomPageToolbar({ status } : { status : string}) {
   return (
     <PageHeaderToolbar>
       <p>Current status: {status}</p>
@@ -37,7 +38,7 @@ function CustomPageToolbar({ status }) {
         sx={{ width: 220 }}
         defaultValue={[dayjs(), dayjs().add(14, 'day')]}
         slots={{ field: SingleInputDateRangeField }}
-        slotProps={{ field: { size: 'small' } }}
+        slotProps={{ field: { } }}
         label="Period"
       />
     </PageHeaderToolbar>
@@ -48,7 +49,7 @@ CustomPageToolbar.propTypes = {
   status: PropTypes.string.isRequired,
 };
 
-function CustomPageHeader({ status }) {
+function CustomPageHeader({ status } : { status : string}) {
   const CustomPageToolbarComponent = React.useCallback(
     () => <CustomPageToolbar status={status} />,
     [status],
@@ -74,13 +75,13 @@ export default function ActionsPageContainer() {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <AppProvider navigation={NAVIGATION} router={router} theme={theme}>
+      <NextAppProvider navigation={NAVIGATION} router={router} theme={theme}>
         <Paper sx={{ width: '100%' }}>
           <PageContainer slots={{ header: CustomPageHeaderComponent }}>
             <PageContent />
           </PageContainer>
         </Paper>
-      </AppProvider>
+      </NextAppProvider>
     </LocalizationProvider>
   );
 }

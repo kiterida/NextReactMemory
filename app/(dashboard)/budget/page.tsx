@@ -11,9 +11,9 @@ import Button from '@mui/material/Button';
 import AddIcon from '@mui/icons-material/Add';
 
 
-const BudgetPage = (props) => {
+const BudgetPage = () => {
 
-    const [message, setMessage] = useState(null);
+    const [message, setMessage] = useState("");
 
     function doIt() {
         setMessage("bang");
