@@ -1,4 +1,6 @@
 
+app/components/supabaseClient.jsn
+
 # Logs
 logs
 *.log
