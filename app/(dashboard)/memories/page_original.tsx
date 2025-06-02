@@ -1,37 +1,32 @@
-// MemoriesView.tsx
-
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
-import { fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred } from './memoryData';
-import { supabase } from './supabaseClient';
+import { fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred } from '../../components/memoryData';
+import { supabase } from '../../components/supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import { useTreeViewApiRef } from '@mui/x-tree-view/hooks';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import DraggableTreeItem from './DraggableTreeItem';
+import DraggableTreeItem from '../../components/DraggableTreeItem';
 import { Box, Card, CardContent } from '@mui/material';
 import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
-import ItemDetailsTab from './ItemDetailsTab';
-import CodeSnippet from './CodeSnippet';
+import ItemDetailsTab from '../../components/ItemDetailsTab';
+import CodeSnippet from '../../components/CodeSnippet';
 import Alert from '@mui/material/Alert';
 import Snackbar, { SnackbarCloseReason } from '@mui/material/Snackbar';
 import { useSearchParams } from 'next/navigation';
 
-interface MemoriesViewProps {
-  filterStarred?: boolean;
-  focusId?: string | null; // or just `string` depending on your logic
-}
+const MemoriesPage = () => {
 
-const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => {
+  const searchParams = useSearchParams();
+  const filterStarred = searchParams.get('view') === 'starred';
 
   const [availableHeight, setAvailableHeight] = useState<number | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
 
   const pageNavParent = useRef<HTMLElement | null>(null);
 
-  //console.log("FocusId = ", focusId);
   // for now
   // const filterStarred = true;
 
@@ -40,34 +35,11 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
   const [treeData, setTreeData] = useState([]);
 
   const [selectedItem, setSelectedItem] = useState(null);
-  const [selectedItems, setSelectedItems] = useState([]);
 
   const [expandedItemId, setExpandedItemId] = useState(null); // Track the expanded item
   const [newItemId, setNewItemId] = useState(null);
 
   const [showSnackBar, setShowSnackBar] = useState(false);
-
-  const handleClick = (event: React.MouseEvent, item) => {
-    if (event.metaKey || event.ctrlKey) {
-       console.log("ctrl key pressed");
-      if (selectedItems.includes(item.id)) {
-        setSelectedItems(selectedItems.filter((id) => id !== item.id));
-      } else {
-        setSelectedItems([...selectedItems, item.id]);
-      }
-    } else {
-      setSelectedItems([item.id]);
-      setSelectedItem(item);
-    }
-    
-    
-
-  };
-
-  useEffect(() => {
-  console.log("Selected items updated:", selectedItems);
-}, [selectedItems]);
-
 
 
   // Need to calculate the height of the header and the pagecontainer nav elelment as well as
@@ -94,8 +66,8 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
       }
 
       navParentHeight = container.getBoundingClientRect().height;
-      //  console.log('navParentHeight =', navParentHeight);
-      //  console.log('parentMarginTop =', parentMarginTop);
+      console.log('navParentHeight =', navParentHeight);
+      console.log('parentMarginTop =', parentMarginTop);
     }
 
     if (headerEl) {
@@ -115,107 +87,19 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
   }, []);
 
   const getTreeData = async () => {
-    //console.log("Fetching tree data...");
+    console.log("Fetching tree data...");
     const data = await fetchMemoryTree();
-    //console.log("Tree data length = ", data.length)
+    console.log("Tree data length = ", data.length)
 
     setTreeData(data);
-    //console.log("data = ", data);
-    //console.log("Tree data fetched");
+    console.log("data = ", data);
+    console.log("Tree data fetched");
   };
 
   useEffect(() => {
     // Fetch the tree data when the component is mounted
     getTreeData();
   }, []); // Empty dependency array ensures this runs only once
-
-
-  useEffect(() => {
-    if (focusId) {
-      const ancestors = getAllAncestorIds(focusId, treeData);
-      console.log("Ancestors:", ancestors);
-
-      for (const ancestor of ancestors) {
-        console.log("setItemExpansion: ", ancestor);
-        apiRef.current.setItemExpansion({
-          itemId: String(ancestor),
-          shouldBeExpanded: true,
-        });
-      }
-
-      // Step 2: Scroll into view after a short delay to ensure it's rendered
-      setTimeout(() => {
-        const el = document.getElementById(`tree-item-${focusId}`);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.classList.add('highlight');
-          setTimeout(() => el.classList.remove('highlight'), 1500);
-
-        } else {
-          console.warn("Could not find element to scroll into view for ID:", expandedItemId);
-        }
-      }, 500); // Adjust delay if needed
-      //const node = findNodeById(treeData, focusId);
-
-      //console.log("findNodeById:", node);
-
-
-    }
-  }, [focusId, treeData]); // Add treeData here to ensure data is ready
-
-  function findNodeById(tree, id) {
-    for (const node of tree) {
-      if (node.id == id) {
-        return node;
-      }
-      if (node.children) {
-        const found = findNodeById(node.children, id);
-        if (found) {
-          return found;
-        }
-      }
-    }
-    return null;
-  }
-
-  function getAllAncestorIds(searchId, tree) {
-    const path = [];
-
-    function findAndTrack(node, parentPath = []) {
-
-      if (node.id == searchId) {
-        path.push(...parentPath); // found it! collect the path
-        return true;
-      }
-
-      if (node.children) {
-        for (const child of node.children) {
-          if (findAndTrack(child, [...parentPath, node.id])) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    }
-
-    for (const rootNode of tree) {
-      if (findAndTrack(rootNode)) {
-        break;
-      }
-    }
-
-    return path; // array of ancestor IDs from root to parent
-  }
-
-  const expandTest = () => {
-    console.log("do it");
-    apiRef.current.setItemExpansion({
-      itemId: String("1"),
-      shouldBeExpanded: true,
-    });
-  }
-
 
   // UseEffect to call ExpandNewlyCreatedParent when data is ready and expandedItemId is set
   useEffect(() => {
@@ -228,9 +112,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     if (newParentId === 'null') {
       newParentId = null;
     }
-    const allItems = Array.from(new Set([...selectedItems, draggedItemId]));
-    console.log("allItems: ", allItems);
-    await updateMemoryItemParent(allItems, newParentId);
+    await updateMemoryItemParent(draggedItemId, newParentId);
     const data = await fetchMemoryTree();
     setTreeData(data);
   };
@@ -380,7 +262,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           item={item}
           itemId={item.id}
           onDropUpdate={handleDropUpdate}
-          onSelectItem={handleClick}
+          onSelectItem={setSelectedItem}
           onCreateNewChild={handleCreateNewChild}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
@@ -442,10 +324,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         }}
       >
         <DndProvider backend={HTML5Backend}>
-          <SimpleTreeView
-            apiRef={apiRef}
-            selectedItems={selectedItems.map(String)} // IDs must be strings
-          >
+          <SimpleTreeView apiRef={apiRef}>
             {mapTreeData(treeData)}
           </SimpleTreeView>
         </DndProvider>
@@ -524,7 +403,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         </Alert>
       </Snackbar>
     </Box>
-  )
+  );
 };
 
-export default MemoriesView;
+export default MemoriesPage;

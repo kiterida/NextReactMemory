@@ -41,7 +41,7 @@ function a11yProps(index) {
 const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
   const [value, setValue] = React.useState(0);
 
-  console.log('selected item = ', selectedItem);
+  //console.log('selected item = ', selectedItem);
 
   const handleChange = (event, newValue) => {
     setValue(newValue);

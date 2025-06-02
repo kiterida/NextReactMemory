@@ -5,15 +5,18 @@ export const searchMemoryItems = async (searchString) => {
   const { data, error } = await supabase
     .from('memory_items')
     .select('*')
-    .like('name', `%${searchString}%`);
+    .or(
+      `name.ilike.%${searchString}%,description.ilike.%${searchString}%,code_snippet.ilike.%${searchString}%`
+    );
 
   if (error) {
-    console.error("Error fetching memory tree view:", error);
+    console.error("Error fetching memory items:", error);
     return [];
   }
 
   return data;
 };
+
 
 
 // Fetch memory tree data from Supabase, order it by integer memory_key, and structure it as a nested tree
@@ -47,7 +50,7 @@ export const fetchMemoryTree = async () => {
     dataMap[item.id] = { ...item, children: [] };
   });
 
-  console.log("dataMap = ", dataMap);
+  //console.log("dataMap = ", dataMap);
 
   const nestedData = [];
   data.forEach((item) => {
@@ -58,7 +61,7 @@ export const fetchMemoryTree = async () => {
     }
   });
 
-  console.log("nestedData = ", nestedData);
+  //console.log("nestedData = ", nestedData);
 
   return nestedData;
 };
@@ -140,24 +143,49 @@ export const updateStarred = async (memoryId, starredStatus) => {
   }
 }
 
-// Update the parent_id of a memory item (drag and drop logic)
-export const updateMemoryItemParent = async (draggedItemId, newParentId) => {
+export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
   try {
-    if (draggedItemId === newParentId) {
+    // Normalize to array
+    const ids = Array.isArray(draggedItemIds) ? draggedItemIds : [draggedItemIds];
+
+    if (ids.includes(newParentId)) {
       console.error("Cannot drop an item onto itself.");
       return;
     }
 
+    console.log("Updating parent_id =", newParentId, "for ids =", ids);
+
     const { error } = await supabase
       .from('memory_items')
       .update({ parent_id: newParentId })
-      .eq('id', draggedItemId);
+      .in('id', ids); // Bulk update with .in()
 
     if (error) throw error;
   } catch (err) {
-    console.error("Error updating memory item:", err);
+    console.error("Error updating memory item(s):", err);
   }
 };
+
+
+// // Update the parent_id of a memory item (drag and drop logic)
+// export const updateMemoryItemParent = async (draggedItemId, newParentId) => {
+//   try {
+//     if (draggedItemId === newParentId) {
+//       console.error("Cannot drop an item onto itself.");
+//       return;
+//     }
+
+//     console.log("update parent id = ", newParentId, " where id = ", draggedItemId);
+//     const { error } = await supabase
+//       .from('memory_items')
+//       .update({ parent_id: newParentId })
+//       .eq('id', draggedItemId);
+
+//     if (error) throw error;
+//   } catch (err) {
+//     console.error("Error updating memory item:", err);
+//   }
+// };
 
 // Update a memory item in Supabase (for the edit form)
 export const updateMemoryItem = async (id, memory_key, name, memory_image, code_snippet, description) => {

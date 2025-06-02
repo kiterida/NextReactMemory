@@ -1,3 +1,5 @@
+// DraggableTreeItem.js
+
 import React, { useState, useEffect } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -44,16 +46,23 @@ const DraggableTreeItem = ({
   const [, drop] = useDrop({
     accept: ITEM_TYPE,
     drop: (draggedItem, monitor) => {
+      if (draggedItem.id === item.id) return;
+
+      const didDrop = monitor.didDrop(); // true if a nested drop already handled it
+      if (didDrop) return;
+
       const dropOffset = monitor.getDifferenceFromInitialOffset();
 
-      if (dropOffset && dropOffset.x < -100) { // Adjust threshold if needed
-        // Dragged item is outside to the left, reset parent_id
+      if (dropOffset && dropOffset.x < -100) {
+        // Only reset if the item was dropped well outside (not on another node)
+        console.log('Resetting parent_id to null due to leftward drop');
         resetParentIdOnLeftDrop(draggedItem);
-      } else if (draggedItem.id !== item.id) {
-        // Drop within the tree
+      } else {
+        console.log("onDropUpdate: draggedItem.id: ", draggedItem.id, " item.id: ", item.id);
         onDropUpdate(draggedItem.id, item.id);
       }
-    },
+    }
+    ,
   });
 
   const handleExpandChange = () => {
@@ -78,7 +87,7 @@ const DraggableTreeItem = ({
       id={`tree-item-${item.id}`}
       label={
         <Box
-        onClick={() => onSelectItem(item)}
+          onClick={(event) => onSelectItem(event, item)}
           sx={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -99,7 +108,7 @@ const DraggableTreeItem = ({
                 whiteSpace: 'nowrap',
                 flexGrow: 1, // Allow this box to take up remaining space
               }}
-            >{item.name} {' '}{isHovered && <> [ {getSubItemCount(item)} ]</>}</Box>
+            >{item.name} {isDragging && "Dragging"}{' '}{isHovered && <> [ {getSubItemCount(item)} ]</>}</Box>
           </Tooltip>
           {isHovered && (
             <div>
