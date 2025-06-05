@@ -350,14 +350,10 @@ const MemoryTester = () => {
 
     return (
         <>
-            <div>todo:</div>
-            <div>
-                <ul>
-                    <li key="3">Find out through chatgpt if i can create an app through electron that can play audio with speechSynthesis while mobile is locked.</li>
-                </ul>
-                <button onClick={() => { speak("create speak function using async wait") }}>Do it</button>
-                <button onClick={() => { window.speechSynthesis.cancel(); }}>Cancel SpeechSynthesisUtterance</button>
-            </div>
+            
+              
+               
+         
 
             <Box sx={{ flexGrow: 1 }}>
                 <Grid container spacing={2}>
@@ -480,7 +476,8 @@ const MemoryTester = () => {
                             </Grid>
                         )}
                         <Grid xs={12}>
-                            <Item>Put more stuff here</Item>
+                             <button onClick={() => { window.speechSynthesis.cancel(); }}>Cancel SpeechSynthesisUtterance</button>
+                            <Item>To Do : React Native App that can be controlled by earbuds</Item>
                         </Grid>
                     </Grid>
                 </Grid>
