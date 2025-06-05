@@ -401,7 +401,7 @@ const MemoryTester = () => {
 
 
                         <Grid size={{ xs: 12, md: 12 }}>
-                            <Item sx={{ height: "160px" }}>
+                            {/* <Item sx={{ height: "160px" }}> */}
                                 {memoryItems.length > 0 ? (
                                     <Box
                                         sx={{
@@ -411,9 +411,15 @@ const MemoryTester = () => {
                                             height: '100%',
                                         }}
                                     >
-                                        <div>
-                                            <strong>{currentMemoryItem.memory_key}</strong> - {currentMemoryItem.name}
-                                        </div>
+                                <TextField
+                                    label="Memory"
+                                    value={`${currentMemoryItem.memory_key} - ${currentMemoryItem.name}`}
+                                    fullWidth
+                                    multiline
+                                    rows={4}
+                                    margin="normal"
+                                />
+                                        
                                         <Button
                                             variant="contained"
                                             onClick={handleNextMemoryItem}
@@ -430,7 +436,7 @@ const MemoryTester = () => {
                                 ) : (
                                     <div>No memory items found</div>
                                 )}
-                            </Item>
+                            {/* </Item> */}
                         </Grid>
 
                         <Grid size={{ xs: 12 }}>
