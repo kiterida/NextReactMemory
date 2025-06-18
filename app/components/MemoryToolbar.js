@@ -61,6 +61,7 @@ const MemoryToolbar = ({
   onPlayChange,
   onTimerChange,
   onToggleReadDetails,
+  onToggleTestMode,
 }) => {
   const [progress, setProgress] = useState(10);
   const [playing, setPlaying] = useState(false);
@@ -77,11 +78,17 @@ const MemoryToolbar = ({
   const onNextRef = useRef(onNext);
 
       const [readDetails, setReadDetails] = useState(false); // Add this to your component state
+      const [testMode, setTestMode] = useState(true);
 
 const handleToggleReadDetails = () => {
   setReadDetails((prev) => !prev);
   onToggleReadDetails(!readDetails);
 };
+
+const handleToggleTestMode = () => {
+  setTestMode((prev) => !prev);
+  onToggleTestMode(!testMode);
+}
 
 useEffect(() => {
   onNextRef.current = onNext; // Keep the latest function
@@ -201,6 +208,7 @@ useEffect(() => {
         open={Boolean(timerAnchorEl)}
         onClose={() => handleTimerClose()}
       >
+        <MenuItem onClick={() => handleTimerClose(10000)}>10 seconds</MenuItem>
         <MenuItem onClick={() => handleTimerClose(5000)}>5 seconds</MenuItem>
         <MenuItem onClick={() => handleTimerClose(4000)}>4 seconds</MenuItem>
         <MenuItem onClick={() => handleTimerClose(3000)}>3 seconds</MenuItem>
@@ -216,6 +224,16 @@ useEffect(() => {
         &nbsp;Read Details
       </Button>
     </Tooltip>
+
+     {/* "Test - Learn mode" Toggle Button */}
+    <Tooltip title="Toggle Learn/Test mode. Changes the timer intervals. Learn mode pauses after speaking the item. Test mode pauses after speaking the memory index.">
+      <Button onClick={handleToggleTestMode}>
+        <ChromeReaderModeIcon color={testMode ? 'primary' : 'disabled'} />
+        &nbsp;{testMode ? "Test Mode" : "Learn Mode"}
+      </Button>
+    </Tooltip>
+
+
       
 
 

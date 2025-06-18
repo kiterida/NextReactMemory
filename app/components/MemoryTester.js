@@ -36,6 +36,7 @@ const MemoryTester = () => {
     const [readDescription, setReadDescription] = useState(false);
     const [timerInterval, setTimerInterval] = useState(5000);
     const intervalRef = useRef(timerInterval);
+    const [testMode, setTestMode] = useState(true);
 
     let allowSpeach = false;
 
@@ -47,7 +48,10 @@ const MemoryTester = () => {
         setShowFields((prev) => !prev); // Toggle field visibility
     };
     const handleMemoryIndexChange = async (event) => {
-        const newValue = event.target.value;
+
+     
+      //  const newValue = event.target.value;
+      const newValue = memoryIndex;
 
         let memoryIndexes = [];
 
@@ -168,16 +172,27 @@ const MemoryTester = () => {
     const readCurrent = async () => {
 
         console.log("readCurrent: ", indexRef.current);
-         currentMemoryItem = memoryItems[indexRef.current] || {};
+        currentMemoryItem = memoryItems[indexRef.current] || {};
+
+        //await speak(testMode ? "test mode" : "learn mode");
 
         await speak(currentMemoryItem.memory_key);
 
-        await sleep(intervalRef.current);
+        if(testMode){
+            await sleep(intervalRef.current);
+        }else{
+
+        }
+
+        
 
         await speak(currentMemoryItem.name);
 
         if(readDescription)
             await speak(currentMemoryItem.description);
+
+        if(!testMode)
+            await sleep(intervalRef.current);
 
         resolve();
 
@@ -217,6 +232,8 @@ const MemoryTester = () => {
     const onPlayStateChange = (playing) => {
 
         setIsPlaying(playing);
+
+        audioRef.current = playing;
 
         if (playing){
             playBack();
@@ -260,8 +277,13 @@ const MemoryTester = () => {
             // };
 
             (async () => {
+
+         
+
                 console.log("🔊 Speaking memory_key:", currentMemoryItem.memory_key);
                 await speak(currentMemoryItem.memory_key);
+
+                
 
                 console.log(`⏸️ Waiting ${delayBetweenParts}ms...`);
                 await new Promise((res) => setTimeout(res, delayBetweenParts));
@@ -299,7 +321,7 @@ const MemoryTester = () => {
             if (!audioRef.current){
                 return res();
             }else{
-                console.log("Allowed to speack");
+                console.log("Allowed to speak");
             }
 
             // if(!allowSpeach)
@@ -347,6 +369,11 @@ const MemoryTester = () => {
         setReadDescription(readDetails);
     }
 
+    const onToggleTestMode = (testMode) => {
+        setTestMode(testMode);
+        console.log("onToggleTestMode: ", testMode);
+    }
+
 
     return (
         <>
@@ -368,9 +395,10 @@ const MemoryTester = () => {
                                     label="Memory Index"
                                     variant="outlined"
                                     value={memoryIndex}
-                                    onChange={handleMemoryIndexChange}
+                                    onChange={(e) => setMemoryIndex(e.target.value)}
                                     fullWidth
                                 />
+                                <Button onClick={handleMemoryIndexChange}>Go</Button>
                             </Box>
                         </Grid>)}
 
@@ -448,6 +476,7 @@ const MemoryTester = () => {
                                 onPlayChange={onPlayStateChange}
                                 onTimerChange={onTimerIntervalChange}
                                 onToggleReadDetails={onToggleReadDetails}
+                                onToggleTestMode={onToggleTestMode}
                             />
                         </Grid>
 

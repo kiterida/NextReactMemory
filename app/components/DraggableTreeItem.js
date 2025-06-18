@@ -9,6 +9,9 @@ import { Star } from '@mui/icons-material';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import { updateStarred } from './memoryData';
 import AddIcon from '@mui/icons-material/Add';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+
 
 const ITEM_TYPE = 'TREE_ITEM';
 
@@ -21,6 +24,7 @@ const DraggableTreeItem = ({
   //expandedItemId,
  // setExpandedItemId,
 }) => {
+  const [contextMenu, setContextMenu] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -65,6 +69,23 @@ const DraggableTreeItem = ({
     ,
   });
 
+  const handleContextMenu = (event) => {
+  event.preventDefault();
+  setContextMenu(
+    contextMenu === null
+      ? {
+          mouseX: event.clientX + 2,
+          mouseY: event.clientY - 6,
+        }
+      : null
+  );
+};
+
+const handleClose = () => {
+  setContextMenu(null);
+};
+
+
   // const handleExpandChange = () => {
   //   if (item && expandedItemId !== null) {
   //     if (expandedItemId === item.id) {
@@ -79,9 +100,10 @@ const DraggableTreeItem = ({
     return item.children ? item.children.length : 0;
   };
 
-  console.log("item id: ", item.id);
+  // console.log("item id: ", item.id);
 
   return (
+    <>
     <TreeItem
       ref={(node) => drag(drop(node))}
       itemId={String(item.id)}
@@ -89,6 +111,7 @@ const DraggableTreeItem = ({
       label={
         <Box
           onClick={(event) => onSelectItem(event, item)}
+          onContextMenu={handleContextMenu}
           sx={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -101,7 +124,7 @@ const DraggableTreeItem = ({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          <Tooltip title={item.name} arrow>
+          {/* <Tooltip title={item.name} arrow> */}
             <Box
               sx={{
                 overflow: 'hidden',
@@ -110,7 +133,7 @@ const DraggableTreeItem = ({
                 flexGrow: 1, // Allow this box to take up remaining space
               }}
             >{item.name} {isDragging && "Dragging"}{' '}{isHovered && <> [ {getSubItemCount(item)} ]</>}</Box>
-          </Tooltip>
+          {/* </Tooltip> */}
           {isHovered && (
             <div>
               <Tooltip title="Star List">
@@ -148,6 +171,30 @@ const DraggableTreeItem = ({
     >
       {children}
     </TreeItem>
+    <Menu
+  open={contextMenu !== null}
+  onClose={handleClose}
+  anchorReference="anchorPosition"
+  anchorPosition={
+    contextMenu !== null
+      ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+      : undefined
+  }
+>
+  <MenuItem onClick={() => { handleClose(); onCreateNewChild(item.id); }}>
+    Add Child
+  </MenuItem>
+  <MenuItem onClick={() => { handleClose(); updateStarred(item.id, !item.starred); }}>
+    {item.starred ? 'Unstar' : 'Star'}
+  </MenuItem>
+  <MenuItem onClick={() => { handleClose(); console.log('Insert 100 Items', item.id); }}>
+    Insert 100 Items
+  </MenuItem>
+  <MenuItem onClick={() => { handleClose(); console.log('Re-Index', item.id); }}>
+    Re-Index from this Item
+  </MenuItem>
+</Menu>
+</>
   );
 }
 
