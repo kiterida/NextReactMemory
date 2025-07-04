@@ -298,6 +298,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     getTreeData();
   };
 
+
   const handleCreateNewChild = async (parentId: string) => {
     try {
 

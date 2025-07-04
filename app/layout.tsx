@@ -131,7 +131,7 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
               theme={theme}
             
             >
-          {props.children}
+            {props.children}
             </NextAppProvider>
             
           </AppRouterCacheProvider>

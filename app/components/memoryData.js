@@ -200,3 +200,50 @@ export const updateMemoryItem = async (id, memory_key, name, memory_image, code_
     console.log("Item updated successfully!");
   }
 };
+
+export const createNewMemoryList = async () => {
+  try {
+
+
+    let highestMemoryKey = 0;
+
+    // Step 1: Query for the rows where parent_id matches and order by memory_key descending
+    const { data: highestMemoryKeyData, error: highestMemoryKeyError } = await supabase
+      .from('memory_items')
+      .select('memory_key')
+      .is('parent_id', null)
+      .order('memory_key', { ascending: false })  // Order by memory_key in descending order
+      .limit(1);  // Limit to only the row with the highest memory_key
+
+
+    highestMemoryKey = highestMemoryKeyData && highestMemoryKeyData.length > 0
+      ? highestMemoryKeyData[0].memory_key + 1  // Increment the highest key
+      : 0;
+
+    console.log("New List Memory Key = ", highestMemoryKey, highestMemoryKeyData)
+    if (highestMemoryKeyError) {
+      throw new Error("Error fetching highest memory_key: " + highestMemoryKeyError.message);
+    }
+
+    const { error, data: newItem } = await supabase
+      .from('memory_items')
+      .insert([{
+        name: 'New Memory List',
+        memory_key: highestMemoryKey,  // Use the new memory_key
+        memory_image: '',
+      }])
+      .select() // 👈 This tells Supabase to return the inserted row
+      .single();
+
+    console.log('newItem inserted = ', newItem);
+
+    if (error) {
+      console.error("Error creating new Memory List:", error);
+    } else {
+      return newItem.id;
+    }
+
+  } catch (err) {
+    console.error("Error in createNewMemoryList:", err);
+  }
+};

@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { usePathname, useParams } from 'next/navigation';
 import { DashboardLayout, ThemeSwitcher } from '@toolpad/core/DashboardLayout';
-import { PageContainer, PageHeaderToolbar, PageHeader } from '@toolpad/core/PageContainer';
+import { PageContainer } from '@toolpad/core/PageContainer';
 import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
@@ -11,17 +11,13 @@ import Stack from '@mui/material/Stack';
 import SearchIcon from '@mui/icons-material/Search';
 import InputAdornment from '@mui/material/InputAdornment';
 import '../globals.css';
-import { searchMemoryItems, createNewMemoryList } from '../components/memoryData';
+import { searchMemoryItems } from '../components/memoryData';
 import Paper from '@mui/material/Paper';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
 import ClickAwayListener from '@mui/material/ClickAwayListener';
 import { useRouter } from 'next/navigation';
-import Button from '@mui/material/Button';
-import Icon from '@mui/material/Icon';
-import { green } from '@mui/material/colors';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
 
 type MemoryItem = {
   id: string;
@@ -31,7 +27,7 @@ type MemoryItem = {
 // ✅ Stable toolbar with internal state
 function ToolbarActionsSearch() {
   const [searchText, setSearchText] = React.useState('');
-  //   const [results, setResults] = React.useState([]);
+//   const [results, setResults] = React.useState([]);
   //
   const [results, setResults] = React.useState<{ id: string; name?: string }[]>([]);
   const [showResults, setShowResults] = React.useState(false);
@@ -56,7 +52,7 @@ function ToolbarActionsSearch() {
     router.push(`/memories?focus=${item.id}`);
   };
 
-  return (
+ return (
     <ClickAwayListener onClickAway={() => setShowResults(false)}>
       <Box sx={{ position: 'relative' }}>
         <Stack direction="row" alignItems="center">
@@ -138,45 +134,6 @@ export default function Layout(props: { children: React.ReactNode }) {
   // ✅ Only use search bar on specific routes
   const showSearchToolbar = pathname === '/memories' || pathname === '/starredLists';
 
-
-  // const CustomPageHeaderComponent = () => {
-  //   return <>
-  //     <div>Custom Header</div>
-  //   </>
-  // }
-
-  const bang = async () => {
-    console.log("Bang: ", await createNewMemoryList());
-  }
-  function CustomPageToolbar({ status }: { status: string }) {
-    return (
-      <PageHeaderToolbar>
-        <Tooltip title="Create New Memory List">
-        <IconButton onClick={bang} color="success" aria-label="Create New Memory List">
-          <AddCircleIcon />
-        </IconButton>
-        </Tooltip>
-      </PageHeaderToolbar>
-    );
-  }
-
-  function CustomPageHeader({ status }: { status: string }) {
-    const CustomPageToolbarComponent = React.useCallback(
-      () => <CustomPageToolbar status={status} />,
-      [status],
-    );
-
-    return <PageHeader slots={{ toolbar: CustomPageToolbarComponent }} />;
-  }
-
-  const status = 'Active';
-
-  const CustomPageHeaderComponent = React.useCallback(
-    () => <CustomPageHeader status={status} />,
-    [status],
-  );
-
-
   return (
     <DashboardLayout
       sx={{ height: '100vh', overflow: 'hidden' }}
@@ -184,7 +141,7 @@ export default function Layout(props: { children: React.ReactNode }) {
         toolbarActions: showSearchToolbar ? ToolbarActionsSearch : undefined,
       }}
     >
-      <PageContainer title={title} sx={sxOverride} slots={{ header: CustomPageHeaderComponent }}  >
+      <PageContainer title={title} sx={sxOverride}>
         {props.children}
       </PageContainer>
     </DashboardLayout>
