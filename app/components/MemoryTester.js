@@ -5,6 +5,7 @@ import { Box, TextField, Switch, Button, Typography } from '@mui/material';
 import Paper from '@mui/material/Paper';
 import Grid from '@mui/material/Grid';
 import { supabase } from './supabaseClient';
+import { addToRevisionList } from './memoryData';
 import MemoryToolbar from './MemoryToolbar';
 import CodeSnippet from './CodeSnippet';
 import { resolve } from 'path';
@@ -22,12 +23,14 @@ const Item = styled(Paper)(({ theme }) => ({
 
 const MemoryTester = () => {
 
+    // TODO: CHANGE THIS FROM memoryIndex to memoryListIndex
     const [memoryIndex, setMemoryIndex] = useState('');
     const [memoryItems, setMemoryItems] = useState([]);
     const [showFields, setShowFields] = useState(true); // Toggle for field visibility
     const [currentMemoryName, setCurrentMemoryName] = useState('');
     const [currentMemoryIndex, setCurrentMemoryIndex] = useState(0); // Track the index of the current memory item
     const indexRef = useRef(currentMemoryIndex);
+    const memoryListIndexRef = useRef(memoryIndex);
     const [audioOn, setAudioOn] = useState(false);
     const audioRef = useRef(audioOn);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -43,6 +46,55 @@ const MemoryTester = () => {
     const vocalisePromiseRef = useRef(null); // To track the promise that resolves when speech ends
     const speechInProgress = useRef(false); // To prevent starting a new speech while one is in progress
 
+  useEffect(() => {
+  const handler = async () => {
+    console.log("Memory test running...");
+
+    // Default values
+    let realMemoryKey = -1;
+    let baseListIndex = -1;
+    let subListIndex = -1;
+    let memoryIndexes = [];
+
+    if (typeof memoryListIndexRef.current === "string") {
+      console.log("we need to change the index");
+
+      // Normalize input: replace dashes with commas, then split
+      const normalized = memoryListIndexRef.current.replace(/-/g, ",");
+      memoryIndexes = normalized
+        .split(",")
+        .map((val) => parseInt(val.trim(), 10))
+        .filter((val) => !isNaN(val));
+
+      baseListIndex = memoryIndexes[0];
+      subListIndex = memoryIndexes[1];
+      realMemoryKey = memoryIndexes[1] * 100 + indexRef.current;
+    } else {
+      console.log("just set the index to the value");
+      baseListIndex = memoryListIndexRef.current;
+      realMemoryKey = indexRef.current;
+    }
+
+    // ✅ call your Supabase insert
+    const newRow = await addToRevisionList(baseListIndex, subListIndex, realMemoryKey);
+    console.log("Inserted:", newRow);
+
+    console.log(
+      "baseListIndex = ",
+      baseListIndex,
+      "\nsubListIndex = ",
+      subListIndex,
+      "\nrealMemoryKey = ",
+      realMemoryKey
+    );
+  };
+
+  window.addEventListener("run-memory-test", handler);
+  return () => window.removeEventListener("run-memory-test", handler);
+}, []);
+
+
+
     const handleSwitchChange = () => {
         console.log("handleSwitchChange");
         setShowFields((prev) => !prev); // Toggle field visibility
@@ -55,6 +107,15 @@ const MemoryTester = () => {
 
         let memoryIndexes = [];
 
+        // We need to handle user input of a single value for a memory list index 
+        // eg. 6 We would query the database for the memory index of 6
+        // But we also need to handle an index followed by a dash and another index
+        // eg. 84-6 In this case we want to query for the memory index of 84, then query for the 
+        // memory index of 6 inside 84 to get the sub category index.
+
+        // The reason for the 84-8 is because our memory lists contain up to 1000 items and its just
+        // too big to load all those items at once in a tree view.
+
         if (typeof newValue === 'string') {
             // Normalize input: replace dashes with commas, then split
             const normalized = newValue.replace(/-/g, ',');
@@ -66,9 +127,13 @@ const MemoryTester = () => {
             console.log("memoryIndexes - ", memoryIndexes);
             console.log("memoryIndexes length = ", memoryIndexes.length);
 
+            // Do we have multiple indexs. This means we need to query twice so we can get the sublist
             if (memoryIndexes.length > 1) {
 
                 console.log("normalized.length = ", normalized.length)
+
+                // Looks like I created supabase function or something to handle the double query.
+                // Todo: document this better please.
                 const { data, error } = await supabase.rpc('get_nested_items_by_keys', {
                     key1: memoryIndexes[0],  // or whatever value you want
                     key2: memoryIndexes[1]
@@ -197,6 +262,11 @@ const MemoryTester = () => {
         resolve();
 
     }
+
+    useEffect(() => {
+        memoryListIndexRef.current = memoryIndex;
+        console.log("useEffect - memoryIndex: ", memoryIndex);
+    }, [memoryIndex])
 
     useEffect(() =>{
         indexRef.current = currentMemoryIndex;

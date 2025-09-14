@@ -247,3 +247,24 @@ export const createNewMemoryList = async () => {
     console.error("Error in createNewMemoryList:", err);
   }
 };
+
+export const addToRevisionList = async (memoryListIndex, subListIndex = null, memoryKey = null) => {
+  const { data, error } = await supabase
+    .from('revision_lists')
+    .insert([
+      {
+        list_index: memoryListIndex,   // required
+        sub_list_index: subListIndex,  // optional
+        item_memory_key: memoryKey     // optional
+      }
+    ])
+    .select() // return inserted row(s)
+
+  if (error) {
+    console.error('Insert error:', error)
+    return null
+  }
+
+  return data
+}
+

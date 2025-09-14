@@ -1,3 +1,5 @@
+# How to
+Run 'npm run dev' to work on the project.
 
 # Create Toolpad App
 

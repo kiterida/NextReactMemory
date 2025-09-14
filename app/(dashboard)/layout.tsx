@@ -1,5 +1,6 @@
 'use client';
 import * as React from 'react';
+import { useRef } from "react";
 import { usePathname, useParams } from 'next/navigation';
 import { DashboardLayout, ThemeSwitcher } from '@toolpad/core/DashboardLayout';
 import { PageContainer, PageHeaderToolbar, PageHeader } from '@toolpad/core/PageContainer';
@@ -11,7 +12,7 @@ import Stack from '@mui/material/Stack';
 import SearchIcon from '@mui/icons-material/Search';
 import InputAdornment from '@mui/material/InputAdornment';
 import '../globals.css';
-import { searchMemoryItems, createNewMemoryList } from '../components/memoryData';
+import { searchMemoryItems, createNewMemoryList, addToRevisionList } from '../components/memoryData';
 import Paper from '@mui/material/Paper';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
@@ -22,6 +23,8 @@ import Button from '@mui/material/Button';
 import Icon from '@mui/material/Icon';
 import { green } from '@mui/material/colors';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
+import MemoryTesterPage from "./memoryTester/page";
 
 type MemoryItem = {
   id: string;
@@ -115,6 +118,7 @@ export default function Layout(props: { children: React.ReactNode }) {
   const params = useParams();
   const [employeeId] = params.segments ?? [];
 
+ 
   const title = React.useMemo(() => {
     if (pathname === '/employees/new') return 'New Employee';
     if (employeeId && pathname.includes('/edit')) return `Employee ${employeeId} - Edit`;
@@ -138,25 +142,63 @@ export default function Layout(props: { children: React.ReactNode }) {
   // ✅ Only use search bar on specific routes
   const showSearchToolbar = pathname === '/memories' || pathname === '/starredLists';
 
-
   // const CustomPageHeaderComponent = () => {
   //   return <>
   //     <div>Custom Header</div>
   //   </>
   // }
 
-  const bang = async () => {
+    const bang = async () => {
     console.log("Bang: ", await createNewMemoryList());
   }
+
+  const addMemoryToTestList = () => {
+    addToRevisionList();
+  }
+
+  // alert(memoryTesterPage);
+
+  //   const toolbarJSX =  memoryTesterPage ? (
+  //     <PageHeaderToolbar>
+  //       <Tooltip title="Add to forgotten list">
+  //       <IconButton onClick={addMemoryToTestList} color="success" aria-label="Create New Memory List">
+  //         <AddCircleIcon />
+  //       </IconButton>
+  //       </Tooltip>
+  //     </PageHeaderToolbar>
+  // ) : (
+  //    <PageHeaderToolbar>
+  //       <Tooltip title="Create New Memory List">
+  //       <IconButton onClick={bang} color="success" aria-label="Create New Memory List">
+  //         <AddCircleIcon />
+  //       </IconButton>
+  //       </Tooltip>
+  //     </PageHeaderToolbar>
+  // );
+
   function CustomPageToolbar({ status }: { status: string }) {
-    return (
+
+    const memoryTesterPage = usePathname() === '/memoryTester';
+
+    console.log("pathname = ", usePathname(), "memoryTesterPage = ", memoryTesterPage);
+
+    return memoryTesterPage ? (
+        <PageHeaderToolbar>
+          <Tooltip title="Add to forgotten list">
+          <IconButton onClick={() => window.dispatchEvent(new Event("run-memory-test"))} color="success" aria-label="Create New Memory List">
+            <FactCheckIcon
+              color="secondary" />
+          </IconButton>
+          </Tooltip>
+        </PageHeaderToolbar>
+    ) : (
       <PageHeaderToolbar>
-        <Tooltip title="Create New Memory List">
-        <IconButton onClick={bang} color="success" aria-label="Create New Memory List">
-          <AddCircleIcon />
-        </IconButton>
-        </Tooltip>
-      </PageHeaderToolbar>
+          <Tooltip title="Create New Memory List">
+          <IconButton onClick={bang} color="success" aria-label="Create New Memory List">
+            <AddCircleIcon />
+          </IconButton>
+          </Tooltip>
+        </PageHeaderToolbar>
     );
   }
 
@@ -176,6 +218,8 @@ export default function Layout(props: { children: React.ReactNode }) {
     [status],
   );
 
+  const renderHeader = true;
+
 
   return (
     <DashboardLayout
@@ -184,7 +228,7 @@ export default function Layout(props: { children: React.ReactNode }) {
         toolbarActions: showSearchToolbar ? ToolbarActionsSearch : undefined,
       }}
     >
-      <PageContainer title={title} sx={sxOverride} slots={{ header: CustomPageHeaderComponent }}  >
+      <PageContainer title={title} sx={sxOverride} {...(renderHeader ? { slots: { header: CustomPageHeaderComponent } } : {})}  >
         {props.children}
       </PageContainer>
     </DashboardLayout>
