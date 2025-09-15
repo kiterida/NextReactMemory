@@ -62,6 +62,7 @@ const MemoryToolbar = ({
   onTimerChange,
   onToggleReadDetails,
   onToggleTestMode,
+  onToggleRevisionMode,
 }) => {
   const [progress, setProgress] = useState(10);
   const [playing, setPlaying] = useState(false);
@@ -79,6 +80,7 @@ const MemoryToolbar = ({
 
       const [readDetails, setReadDetails] = useState(false); // Add this to your component state
       const [testMode, setTestMode] = useState(true);
+      const [revisionMode, setRevisionMode] = useState(false);
 
 const handleToggleReadDetails = () => {
   setReadDetails((prev) => !prev);
@@ -88,6 +90,11 @@ const handleToggleReadDetails = () => {
 const handleToggleTestMode = () => {
   setTestMode((prev) => !prev);
   onToggleTestMode(!testMode);
+}
+
+const handleToggleRevisionMode = () => {
+  setRevisionMode((prev) => !prev);
+  onToggleRevisionMode(!revisionMode);
 }
 
 useEffect(() => {
@@ -231,6 +238,15 @@ useEffect(() => {
         <ChromeReaderModeIcon color={testMode ? 'primary' : 'disabled'} />
         &nbsp;{testMode ? "Test Mode" : "Learn Mode"}
       </Button>
+      
+    </Tooltip>
+         {/* "Revision Mode" Toggle Button */}
+    <Tooltip title="Toggle Revision mode. In Revision mode, the app will query for a revision list using the memory list index.">
+      <Button onClick={handleToggleRevisionMode}>
+        <ChromeReaderModeIcon color={revisionMode ? 'primary' : 'disabled'} />
+        &nbsp;Revision Mode
+      </Button>
+      
     </Tooltip>
 
 

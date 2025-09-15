@@ -40,60 +40,111 @@ const MemoryTester = () => {
     const [timerInterval, setTimerInterval] = useState(5000);
     const intervalRef = useRef(timerInterval);
     const [testMode, setTestMode] = useState(true);
+    const [revisionMode, setRevisionMode] = useState(false);
 
     let allowSpeach = false;
 
     const vocalisePromiseRef = useRef(null); // To track the promise that resolves when speech ends
     const speechInProgress = useRef(false); // To prevent starting a new speech while one is in progress
 
-  useEffect(() => {
-  const handler = async () => {
-    console.log("Memory test running...");
+    // This is getting messy. Not sure how to handle reate state variables correctly in code.
+    const memoryItemsRef = useRef([]);
+    useEffect(() => {
+    memoryItemsRef.current = memoryItems;
+    }, [memoryItems]);
 
-    // Default values
-    let realMemoryKey = -1;
-    let baseListIndex = -1;
-    let subListIndex = -1;
-    let memoryIndexes = [];
+    const revisionModeRef = useRef([]);
+    useEffect(() =>{
+        revisionModeRef.current = revisionMode;
+    }, [revisionMode])
 
-    if (typeof memoryListIndexRef.current === "string") {
-      console.log("we need to change the index");
+    // The button that fires this function is created inside app\(dashboard)\layout.tsx
+    useEffect(() => {
+    const handler = async () => {
 
-      // Normalize input: replace dashes with commas, then split
-      const normalized = memoryListIndexRef.current.replace(/-/g, ",");
-      memoryIndexes = normalized
-        .split(",")
-        .map((val) => parseInt(val.trim(), 10))
-        .filter((val) => !isNaN(val));
+        if(revisionModeRef.current){
+            console.log("Can't add to revision list while in Revision Mode");
+            return;
+        }
+        console.log("Event trigerred run-add-to-revision-list...");
 
-      baseListIndex = memoryIndexes[0];
-      subListIndex = memoryIndexes[1];
-      realMemoryKey = memoryIndexes[1] * 100 + indexRef.current;
-    } else {
-      console.log("just set the index to the value");
-      baseListIndex = memoryListIndexRef.current;
-      realMemoryKey = indexRef.current;
-    }
+        // Default values
+        let realMemoryKey = -1;
+        let baseListIndex = -1;
+        let subListIndex = -1;
+        let memoryIndexes = [];
 
-    // ✅ call your Supabase insert
-    const newRow = await addToRevisionList(baseListIndex, subListIndex, realMemoryKey);
-    console.log("Inserted:", newRow);
+        // If we havn't retrived any memory items yet, just abort
+        if(memoryItemsRef.current.length <= 0){
+            console.log("Memory items not set. Aborting Insert ", memoryItemsRef.current.length);
+            return;
+        }
+        else
+        {
+            console.log("memoryItemsRef.current.length = ", memoryItemsRef.current.length)
+        }
 
-    console.log(
-      "baseListIndex = ",
-      baseListIndex,
-      "\nsubListIndex = ",
-      subListIndex,
-      "\nrealMemoryKey = ",
-      realMemoryKey
-    );
-  };
+        if (typeof memoryListIndexRef.current === "string") {
+            
 
-  window.addEventListener("run-memory-test", handler);
-  return () => window.removeEventListener("run-memory-test", handler);
-}, []);
+            // Normalize input: replace dashes with commas, then split
+            const normalized = memoryListIndexRef.current.replace(/-/g, ",");
+            memoryIndexes = normalized
+                .split(",")
+                .map((val) => parseInt(val.trim(), 10))
+                .filter((val) => !isNaN(val));
 
+            if (memoryIndexes.length > 1) {
+                console.log("we need to change the index");
+                baseListIndex = memoryIndexes[0];
+                subListIndex = memoryIndexes[1];
+                realMemoryKey = memoryIndexes[1] * 100 + indexRef.current;
+            }
+            else {
+                console.log("just set the index to the value");
+                baseListIndex = parseInt(memoryListIndexRef.current);
+                console.log("indexRef.current", indexRef.current);
+                realMemoryKey = parseInt(indexRef.current);
+            }
+        }
 
+        // Validate before insert
+        const isValid =
+            Number.isInteger(baseListIndex) &&
+            baseListIndex >= 0 &&
+            Number.isInteger(realMemoryKey) &&
+            realMemoryKey >= 0;
+
+        if (!isValid) {
+            console.log("Validation failed:", {
+                baseListIndex,
+                subListIndex,
+                realMemoryKey,
+            });
+        } else {
+            // Supabase insert
+            const newRow = await addToRevisionList(
+                baseListIndex,
+                subListIndex,
+                realMemoryKey
+            );
+            console.log("Inserted:", newRow);
+        }
+
+        console.log(
+        "baseListIndex = ",
+        baseListIndex,
+        "\nsubListIndex = ",
+        subListIndex,
+        "\nrealMemoryKey = ",
+        realMemoryKey
+        );
+
+    };
+
+    window.addEventListener("run-add-to-revision-list", handler);
+    return () => window.removeEventListener("run-add-to-revision-list", handler);
+    }, []);
 
     const handleSwitchChange = () => {
         console.log("handleSwitchChange");
@@ -101,7 +152,12 @@ const MemoryTester = () => {
     };
     const handleMemoryIndexChange = async (event) => {
 
-     
+     // Find out if we are in revision mode
+     if(revisionMode){
+        console.log("Revision mode is enabled. Load from revision_lists table");
+     }else{
+        console.log("Do normal search from memory_items");
+     }
       //  const newValue = event.target.value;
       const newValue = memoryIndex;
 
@@ -132,20 +188,39 @@ const MemoryTester = () => {
 
                 console.log("normalized.length = ", normalized.length)
 
-                // Looks like I created supabase function or something to handle the double query.
-                // Todo: document this better please.
-                const { data, error } = await supabase.rpc('get_nested_items_by_keys', {
-                    key1: memoryIndexes[0],  // or whatever value you want
-                    key2: memoryIndexes[1]
-                });
+                 if(!revisionMode){
 
+                    // Looks like I created supabase function or something to handle the double query.
+                    // Todo: document this better please.
+                    const { data, error } = await supabase.rpc('get_nested_items_by_keys', {
+                        key1: memoryIndexes[0],  // or whatever value you want
+                        key2: memoryIndexes[1]
+                    });
 
-                if (error) {
+                    if (error) {
+                        console.error("Error fetching nested items:", error);
+                    } else {
+                        console.log("Nested items:", data);
+                        setMemoryItems(data || []);
+                    }
+
+                }else{
+                    const { data, error } = await supabase.rpc('get_revision_list', { 
+                        p_list_index: memoryIndexes[0], 
+                        p_sub_list_index: memoryIndexes[1] });
+
+                    if (error) {
                     console.error("Error fetching nested items:", error);
-                } else {
-                    console.log("Nested items:", data);
-                    setMemoryItems(data || []);
+                    } else {
+                        console.log("Nested items:", data);
+                        setMemoryItems(data || []);
+                    }
                 }
+
+                
+
+
+            
             } else {
                 memoryIndexes = [newValue];
 
@@ -444,6 +519,11 @@ const MemoryTester = () => {
         console.log("onToggleTestMode: ", testMode);
     }
 
+    const onToggleRevisionMode = (revisionMode) => {
+        setRevisionMode(revisionMode);
+        console.log("onToggleRevisionMode: ", revisionMode);
+    }
+
 
     return (
         <>
@@ -547,6 +627,7 @@ const MemoryTester = () => {
                                 onTimerChange={onTimerIntervalChange}
                                 onToggleReadDetails={onToggleReadDetails}
                                 onToggleTestMode={onToggleTestMode}
+                                onToggleRevisionMode={onToggleRevisionMode}
                             />
                         </Grid>
 

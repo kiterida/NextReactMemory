@@ -1,6 +1,15 @@
 # How to
 Run 'npm run dev' to work on the project.
 
+# How to update to github
+
+First build the project
+`npm run build`
+Then add the changes to git
+`git add .`
+`git commit -m "Describe your changes"`
+`git push -u origin main`
+
 # Create Toolpad App
 
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-toolpad-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).

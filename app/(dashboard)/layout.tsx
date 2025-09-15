@@ -184,8 +184,8 @@ export default function Layout(props: { children: React.ReactNode }) {
 
     return memoryTesterPage ? (
         <PageHeaderToolbar>
-          <Tooltip title="Add to forgotten list">
-          <IconButton onClick={() => window.dispatchEvent(new Event("run-memory-test"))} color="success" aria-label="Create New Memory List">
+          <Tooltip title="Add to Revision list">
+          <IconButton onClick={() => window.dispatchEvent(new Event("run-add-to-revision-list"))} color="success" aria-label="Add to revision List">
             <FactCheckIcon
               color="secondary" />
           </IconButton>
