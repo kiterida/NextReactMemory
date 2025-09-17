@@ -268,3 +268,21 @@ export const addToRevisionList = async (memoryListIndex, subListIndex = null, me
   return data
 }
 
+export const deleteRevisionList = async (memoryListIndex, subListIndex = null) => {
+  const { data, error } = await supabase
+    .from("revision_lists")
+    .delete()
+    .match({
+      list_index: memoryListIndex,
+      sub_list_index: subListIndex === null ? -1 : subListIndex,
+    });
+
+  if (error) {
+    console.error("Error deleting revision list:", error);
+    throw error;
+  }
+
+  console.log("Deleted rows:", data);
+  return data;
+}
+

@@ -5,7 +5,7 @@ import { Box, TextField, Switch, Button, Typography } from '@mui/material';
 import Paper from '@mui/material/Paper';
 import Grid from '@mui/material/Grid';
 import { supabase } from './supabaseClient';
-import { addToRevisionList } from './memoryData';
+import { addToRevisionList, deleteRevisionList } from './memoryData';
 import MemoryToolbar from './MemoryToolbar';
 import CodeSnippet from './CodeSnippet';
 import { resolve } from 'path';
@@ -50,100 +50,150 @@ const MemoryTester = () => {
     // This is getting messy. Not sure how to handle reate state variables correctly in code.
     const memoryItemsRef = useRef([]);
     useEffect(() => {
-    memoryItemsRef.current = memoryItems;
+        memoryItemsRef.current = memoryItems;
     }, [memoryItems]);
 
     const revisionModeRef = useRef([]);
-    useEffect(() =>{
+    useEffect(() => {
         revisionModeRef.current = revisionMode;
     }, [revisionMode])
 
-    // The button that fires this function is created inside app\(dashboard)\layout.tsx
-    useEffect(() => {
-    const handler = async () => {
-
-        if(revisionModeRef.current){
-            console.log("Can't add to revision list while in Revision Mode");
-            return;
+    const handleDeleteRevisionList = () => {
+        if (!canDoRevisionAction()) {
+            console.log("Aborting Delete Revision List");
+            return false;
         }
-        console.log("Event trigerred run-add-to-revision-list...");
 
+        const memoryIndexes = getMemoryListKeys();
+        console.log("doing delete using: ", memoryIndexes);
+        const resultData = deleteRevisionList(memoryIndexes[0], memoryIndexes[1]);
+        console.log("Revision List Deleted: ", resultData);
+       
+    };
+
+    // Checks to see if a valid memory list is loaded before allowing to add to a revision list
+    // or deleting a revision list
+    const canDoRevisionAction = () => {
+        // If we havn't retrived any memory items yet, just abort
+        if (memoryItemsRef.current.length <= 0) {
+            console.log("Memory items not set.");
+            return false;
+        }
+        else {
+            return true;
+        }
+    }
+
+    // Gets the MemoryListIndex and SublistIndex
+    const getMemoryListKeys = () => {
         // Default values
         let realMemoryKey = -1;
         let baseListIndex = -1;
         let subListIndex = -1;
         let memoryIndexes = [];
 
-        // If we havn't retrived any memory items yet, just abort
-        if(memoryItemsRef.current.length <= 0){
-            console.log("Memory items not set. Aborting Insert ", memoryItemsRef.current.length);
-            return;
+        // Normalize input: replace dashes with commas, then split
+        const normalized = memoryListIndexRef.current.replace(/-/g, ",");
+        memoryIndexes = normalized
+            .split(",")
+            .map((val) => parseInt(val.trim(), 10))
+            .filter((val) => !isNaN(val));
+
+        if (memoryIndexes.length > 1) {
+            memoryIndexes;
         }
-        else
-        {
-            console.log("memoryItemsRef.current.length = ", memoryItemsRef.current.length)
+        else {
+            console.log("just set the index to the value");
+            memoryIndexes[0] = parseInt(memoryListIndexRef.current);  
+            memoryIndexes[1] = -1;
         }
 
-        if (typeof memoryListIndexRef.current === "string") {
-            
+        return memoryIndexes;
+    }
 
-            // Normalize input: replace dashes with commas, then split
-            const normalized = memoryListIndexRef.current.replace(/-/g, ",");
-            memoryIndexes = normalized
-                .split(",")
-                .map((val) => parseInt(val.trim(), 10))
-                .filter((val) => !isNaN(val));
+    // Add to revision list button handler
+    // The button that fires this function is created inside app\(dashboard)\layout.tsx
+    useEffect(() => {
+        const handler = async () => {
 
-            if (memoryIndexes.length > 1) {
-                console.log("we need to change the index");
-                baseListIndex = memoryIndexes[0];
-                subListIndex = memoryIndexes[1];
-                realMemoryKey = memoryIndexes[1] * 100 + indexRef.current;
+            if (revisionModeRef.current) {
+                console.log("Can't add to revision list while in Revision Mode");
+                return;
             }
-            else {
-                console.log("just set the index to the value");
-                baseListIndex = parseInt(memoryListIndexRef.current);
-                console.log("indexRef.current", indexRef.current);
-                realMemoryKey = parseInt(indexRef.current);
+            console.log("Event trigerred run-add-to-revision-list...");
+
+            // Default values
+            let realMemoryKey = -1;
+            let baseListIndex = -1;
+            let subListIndex = -1;
+            let memoryIndexes = [];
+
+            if (!canDoRevisionAction()) {
+                console.log("Aborting Add to revision List");
+                return false;
             }
-        }
 
-        // Validate before insert
-        const isValid =
-            Number.isInteger(baseListIndex) &&
-            baseListIndex >= 0 &&
-            Number.isInteger(realMemoryKey) &&
-            realMemoryKey >= 0;
 
-        if (!isValid) {
-            console.log("Validation failed:", {
+            if (typeof memoryListIndexRef.current === "string") {
+
+
+                // Normalize input: replace dashes with commas, then split
+                const normalized = memoryListIndexRef.current.replace(/-/g, ",");
+                memoryIndexes = normalized
+                    .split(",")
+                    .map((val) => parseInt(val.trim(), 10))
+                    .filter((val) => !isNaN(val));
+
+                if (memoryIndexes.length > 1) {
+                    console.log("we need to change the index");
+                    baseListIndex = memoryIndexes[0];
+                    subListIndex = memoryIndexes[1];
+                    realMemoryKey = memoryIndexes[1] * 100 + indexRef.current;
+                }
+                else {
+                    console.log("just set the index to the value");
+                    baseListIndex = parseInt(memoryListIndexRef.current);
+                    console.log("indexRef.current", indexRef.current);
+                    realMemoryKey = parseInt(indexRef.current);
+                }
+            }
+
+            // Validate before insert
+            const isValid =
+                Number.isInteger(baseListIndex) &&
+                baseListIndex >= 0 &&
+                Number.isInteger(realMemoryKey) &&
+                realMemoryKey >= 0;
+
+            if (!isValid) {
+                console.log("Validation failed:", {
+                    baseListIndex,
+                    subListIndex,
+                    realMemoryKey,
+                });
+            } else {
+                // Supabase insert
+                const newRow = await addToRevisionList(
+                    baseListIndex,
+                    subListIndex,
+                    realMemoryKey
+                );
+                console.log("Inserted:", newRow);
+            }
+
+            console.log(
+                "baseListIndex = ",
                 baseListIndex,
+                "\nsubListIndex = ",
                 subListIndex,
-                realMemoryKey,
-            });
-        } else {
-            // Supabase insert
-            const newRow = await addToRevisionList(
-                baseListIndex,
-                subListIndex,
+                "\nrealMemoryKey = ",
                 realMemoryKey
             );
-            console.log("Inserted:", newRow);
-        }
 
-        console.log(
-        "baseListIndex = ",
-        baseListIndex,
-        "\nsubListIndex = ",
-        subListIndex,
-        "\nrealMemoryKey = ",
-        realMemoryKey
-        );
+        };
 
-    };
-
-    window.addEventListener("run-add-to-revision-list", handler);
-    return () => window.removeEventListener("run-add-to-revision-list", handler);
+        window.addEventListener("run-add-to-revision-list", handler);
+        return () => window.removeEventListener("run-add-to-revision-list", handler);
     }, []);
 
     const handleSwitchChange = () => {
@@ -152,14 +202,17 @@ const MemoryTester = () => {
     };
     const handleMemoryIndexChange = async (event) => {
 
-     // Find out if we are in revision mode
-     if(revisionMode){
-        console.log("Revision mode is enabled. Load from revision_lists table");
-     }else{
-        console.log("Do normal search from memory_items");
-     }
-      //  const newValue = event.target.value;
-      const newValue = memoryIndex;
+        // Reset the current index everytime we load a new set of rows
+        setCurrentMemoryIndex(0);
+
+        // Find out if we are in revision mode
+        if (revisionMode) {
+            console.log("Revision mode is enabled. Load from revision_lists table");
+        } else {
+            console.log("Do normal search from memory_items");
+        }
+        //  const newValue = event.target.value;
+        const newValue = memoryIndex;
 
         let memoryIndexes = [];
 
@@ -188,7 +241,7 @@ const MemoryTester = () => {
 
                 console.log("normalized.length = ", normalized.length)
 
-                 if(!revisionMode){
+                if (!revisionMode) {
 
                     // Looks like I created supabase function or something to handle the double query.
                     // Todo: document this better please.
@@ -204,67 +257,88 @@ const MemoryTester = () => {
                         setMemoryItems(data || []);
                     }
 
-                }else{
-                    const { data, error } = await supabase.rpc('get_revision_list', { 
-                        p_list_index: memoryIndexes[0], 
-                        p_sub_list_index: memoryIndexes[1] });
+                } else {
+                    const { data, error } = await supabase.rpc('get_revision_list', {
+                        p_list_index: memoryIndexes[0],
+                        p_sub_list_index: memoryIndexes[1]
+                    });
 
                     if (error) {
-                    console.error("Error fetching nested items:", error);
+                        console.error("Error fetching nested items:", error);
                     } else {
                         console.log("Nested items:", data);
                         setMemoryItems(data || []);
                     }
                 }
 
-                
 
 
-            
+
+
             } else {
                 memoryIndexes = [newValue];
 
                 console.log("single value");
 
                 if (newValue) {
-                    try {
-                        // First query: get the root memory item with parent_id null and matching memory_key
-                        const { data: rootData, error: rootError } = await supabase
-                            .from('memory_items')
-                            .select('*')
-                            .is('parent_id', null)
-                            .eq('memory_key', parseInt(newValue))
-                            .single(); // We expect a single row
 
-                        console.log("handleMemoryIndexChange memory_key", newValue);
+                    if(!revisionMode){
 
-                        if (rootError) {
-                            console.error("Error fetching root memory item:", rootError.message);
-                            return;
-                        }
-
-                        console.log("Root Memory Item:", rootData);
-                        setCurrentMemoryName(rootData.name);
-
-                        if (rootData) {
-                            // Second query: get child memory items ordered by memory_key where parent_id equals the id of the root row
-                            const { data: childData, error: childError } = await supabase
+                        try {
+                            // First query: get the root memory item with parent_id null and matching memory_key
+                            const { data: rootData, error: rootError } = await supabase
                                 .from('memory_items')
                                 .select('*')
-                                .eq('parent_id', rootData.id)
-                                .order('memory_key', { ascending: true }); // Order by memory_key ascending
+                                .is('parent_id', null)
+                                .eq('memory_key', parseInt(newValue))
+                                .single(); // We expect a single row
 
-                            if (childError) {
-                                console.error("Error fetching child memory items:", childError.message);
-                            } else {
-                                setMemoryItems(childData || []);
-                                console.log("Ordered Child Memory Items:", childData);
+                            console.log("handleMemoryIndexChange memory_key", newValue);
+
+                            if (rootError) {
+                                console.error("Error fetching root memory item:", rootError.message);
+                                return;
                             }
-                        } else {
-                            setMemoryItems([]);
+
+                            console.log("Root Memory Item:", rootData);
+                            setCurrentMemoryName(rootData.name);
+
+                            if (rootData) {
+                                // Second query: get child memory items ordered by memory_key where parent_id equals the id of the root row
+                                const { data: childData, error: childError } = await supabase
+                                    .from('memory_items')
+                                    .select('*')
+                                    .eq('parent_id', rootData.id)
+                                    .order('memory_key', { ascending: true }); // Order by memory_key ascending
+
+                                if (childError) {
+                                    console.error("Error fetching child memory items:", childError.message);
+                                } else {
+                                    setMemoryItems(childData || []);
+                                    console.log("Ordered Child Memory Items:", childData);
+                                }
+                            } else {
+                                setMemoryItems([]);
+                            }
+                        } catch (error) {
+                            console.error("Unexpected error:", error);
                         }
-                    } catch (error) {
-                        console.error("Unexpected error:", error);
+
+                    }
+                    else
+                    {
+                        // If we are in revision mode, we will need to to call get_revision_list using newValue and -1 as the sublist
+                        const { data, error } = await supabase.rpc('get_revision_list', {
+                        p_list_index: newValue,
+                        p_sub_list_index: -1
+                    });
+
+                    if (error) {
+                        console.error("Error fetching nested items:", error);
+                    } else {
+                        console.log("Nested items:", data);
+                        setMemoryItems(data || []);
+                    }
                     }
                 } else {
                     setMemoryItems([]);
@@ -318,20 +392,20 @@ const MemoryTester = () => {
 
         await speak(currentMemoryItem.memory_key);
 
-        if(testMode){
+        if (testMode) {
             await sleep(intervalRef.current);
-        }else{
+        } else {
 
         }
 
-        
+
 
         await speak(currentMemoryItem.name);
 
-        if(readDescription)
+        if (readDescription)
             await speak(currentMemoryItem.description);
 
-        if(!testMode)
+        if (!testMode)
             await sleep(intervalRef.current);
 
         resolve();
@@ -343,32 +417,32 @@ const MemoryTester = () => {
         console.log("useEffect - memoryIndex: ", memoryIndex);
     }, [memoryIndex])
 
-    useEffect(() =>{
+    useEffect(() => {
         indexRef.current = currentMemoryIndex;
         console.log("currentMemoryIndex: ", currentMemoryIndex);
-        if(playingRef.current)
+        if (playingRef.current)
             playBack();
     }, [currentMemoryIndex])
 
-    useEffect(()=>{
+    useEffect(() => {
         audioRef.current = audioOn;
-       
+
         intervalRef.current = timerInterval;
-       
+
         console.log("Player: ", isPlaying ? "On" : "Off");
-        console.log("Audio: ",  audioOn ? "On" : "Off");
-        if(!audioOn)
+        console.log("Audio: ", audioOn ? "On" : "Off");
+        if (!audioOn)
             window.speechSynthesis.cancel();
     }, [audioOn, timerInterval])
 
-    useEffect(()=>{
-         playingRef.current = isPlaying;
+    useEffect(() => {
+        playingRef.current = isPlaying;
     }, [isPlaying])
 
     const playBack = async () => {
-        
+
         console.log("!!!playingRef: ", playingRef);
-      
+
         await readCurrent();
         handleNextMemoryItem();
 
@@ -380,14 +454,14 @@ const MemoryTester = () => {
 
         audioRef.current = playing;
 
-        if (playing){
+        if (playing) {
             playBack();
         }
-        else{
+        else {
             console.log("Cancelling speach!");
             window.speechSynthesis.cancel();
         }
-            
+
 
         // speak("test");
 
@@ -423,12 +497,12 @@ const MemoryTester = () => {
 
             (async () => {
 
-         
+
 
                 console.log("🔊 Speaking memory_key:", currentMemoryItem.memory_key);
                 await speak(currentMemoryItem.memory_key);
 
-                
+
 
                 console.log(`⏸️ Waiting ${delayBetweenParts}ms...`);
                 await new Promise((res) => setTimeout(res, delayBetweenParts));
@@ -463,9 +537,9 @@ const MemoryTester = () => {
     const speak = (text) => {
         return new Promise((res) => {
 
-            if (!audioRef.current){
+            if (!audioRef.current) {
                 return res();
-            }else{
+            } else {
                 console.log("Allowed to speak");
             }
 
@@ -473,7 +547,7 @@ const MemoryTester = () => {
             // {
             //     console.log("Speak function interupted.");
             //     return res();
-                
+
             // }
 
             const utterance = new SpeechSynthesisUtterance(text);
@@ -527,10 +601,10 @@ const MemoryTester = () => {
 
     return (
         <>
-            
-              
-               
-         
+
+
+
+
 
             <Box sx={{ flexGrow: 1 }}>
                 <Grid container spacing={2}>
@@ -576,40 +650,40 @@ const MemoryTester = () => {
 
                         <Grid size={{ xs: 12, md: 12 }}>
                             {/* <Item sx={{ height: "160px" }}> */}
-                                {memoryItems.length > 0 ? (
-                                    <Box
+                            {memoryItems.length > 0 ? (
+                                <Box
+                                    sx={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        height: '100%',
+                                    }}
+                                >
+                                    <TextField
+                                        label="Memory"
+                                        value={`${currentMemoryItem.memory_key} - ${currentMemoryItem.name}`}
+                                        fullWidth
+                                        multiline
+                                        rows={4}
+                                        margin="normal"
+                                    />
+
+                                    <Button
+                                        variant="contained"
+                                        onClick={handleNextMemoryItem}
                                         sx={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            justifyContent: 'space-between',
-                                            height: '100%',
+                                            display: 'default',
+                                            marginTop: 'auto',
+                                            width: '100%',
                                         }}
                                     >
-                                <TextField
-                                    label="Memory"
-                                    value={`${currentMemoryItem.memory_key} - ${currentMemoryItem.name}`}
-                                    fullWidth
-                                    multiline
-                                    rows={4}
-                                    margin="normal"
-                                />
-                                        
-                                        <Button
-                                            variant="contained"
-                                            onClick={handleNextMemoryItem}
-                                            sx={{
-                                                display: 'default',
-                                                marginTop: 'auto',
-                                                width: '100%',
-                                            }}
-                                        >
-                                            Next
-                                        </Button>
-                                    </Box>
+                                        Next
+                                    </Button>
+                                </Box>
 
-                                ) : (
-                                    <div>No memory items found</div>
-                                )}
+                            ) : (
+                                <div>No memory items found</div>
+                            )}
                             {/* </Item> */}
                         </Grid>
 
@@ -630,6 +704,20 @@ const MemoryTester = () => {
                                 onToggleRevisionMode={onToggleRevisionMode}
                             />
                         </Grid>
+
+                        {revisionMode &&
+                            <Grid container spacing={2} alignItems="center">
+                                <Grid item>
+                                    <Button
+                                        variant="contained"
+                                        color="error"
+                                        onClick={handleDeleteRevisionList}
+                                    >
+                                        Delete Revision List
+                                    </Button>
+                                </Grid>
+                            </Grid>
+                        }
 
                         {showFields && (
                             <Grid size={{ xs: 12, md: 12 }}>
@@ -656,7 +744,7 @@ const MemoryTester = () => {
                             </Grid>
                         )}
                         <Grid xs={12}>
-                             <button onClick={() => { window.speechSynthesis.cancel(); }}>Cancel SpeechSynthesisUtterance</button>
+                            <button onClick={() => { window.speechSynthesis.cancel(); }}>Cancel SpeechSynthesisUtterance</button>
                             <Item>To Do : React Native App that can be controlled by earbuds</Item>
                         </Grid>
                     </Grid>
