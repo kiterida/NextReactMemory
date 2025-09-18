@@ -215,6 +215,8 @@ useEffect(() => {
         open={Boolean(timerAnchorEl)}
         onClose={() => handleTimerClose()}
       >
+        <MenuItem onClick={() => handleTimerClose(20000)}>20 seconds</MenuItem>
+        <MenuItem onClick={() => handleTimerClose(15000)}>15 seconds</MenuItem>
         <MenuItem onClick={() => handleTimerClose(10000)}>10 seconds</MenuItem>
         <MenuItem onClick={() => handleTimerClose(5000)}>5 seconds</MenuItem>
         <MenuItem onClick={() => handleTimerClose(4000)}>4 seconds</MenuItem>
