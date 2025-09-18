@@ -9,6 +9,10 @@ import { addToRevisionList, deleteRevisionList } from './memoryData';
 import MemoryToolbar from './MemoryToolbar';
 import CodeSnippet from './CodeSnippet';
 import { resolve } from 'path';
+import {
+  Dialog, DialogTitle, DialogContent,
+  DialogContentText, DialogActions
+} from '@mui/material';
 
 const Item = styled(Paper)(({ theme }) => ({
     backgroundColor: '#fff',
@@ -41,6 +45,7 @@ const MemoryTester = () => {
     const intervalRef = useRef(timerInterval);
     const [testMode, setTestMode] = useState(true);
     const [revisionMode, setRevisionMode] = useState(false);
+    const [confirmOpen, setConfirmOpen] = useState(false);
 
     let allowSpeach = false;
 
@@ -56,7 +61,10 @@ const MemoryTester = () => {
     const revisionModeRef = useRef([]);
     useEffect(() => {
         revisionModeRef.current = revisionMode;
+        handleMemoryIndexChange();
     }, [revisionMode])
+
+    
 
     const handleDeleteRevisionList = () => {
         if (!canDoRevisionAction()) {
@@ -64,11 +72,29 @@ const MemoryTester = () => {
             return false;
         }
 
+        setConfirmOpen(true); // show confirmation dialog
+
+        // const memoryIndexes = getMemoryListKeys();
+        // console.log("doing delete using: ", memoryIndexes);
+        // const resultData = deleteRevisionList(memoryIndexes[0], memoryIndexes[1]);
+        // console.log("Revision List Deleted: ", resultData);
+       
+    };
+
+    const confirmDeleteRevisionList = async () => {
         const memoryIndexes = getMemoryListKeys();
         console.log("doing delete using: ", memoryIndexes);
-        const resultData = deleteRevisionList(memoryIndexes[0], memoryIndexes[1]);
+        const resultData = await deleteRevisionList(memoryIndexes[0], memoryIndexes[1]);
         console.log("Revision List Deleted: ", resultData);
-       
+
+        setConfirmOpen(false); // close dialog
+
+        handleMemoryIndexChange();
+    };
+
+    const cancelDeleteRevisionList = () => {
+        console.log("User cancelled delete");
+        setConfirmOpen(false); // just close
     };
 
     // Checks to see if a valid memory list is loaded before allowing to add to a revision list
@@ -148,7 +174,7 @@ const MemoryTester = () => {
                     console.log("we need to change the index");
                     baseListIndex = memoryIndexes[0];
                     subListIndex = memoryIndexes[1];
-                    realMemoryKey = memoryIndexes[1] * 100 + indexRef.current;
+                    realMemoryKey = parseInt(memoryIndexes[1] * 100) + parseInt(indexRef.current);
                 }
                 else {
                     console.log("just set the index to the value");
@@ -524,7 +550,17 @@ const MemoryTester = () => {
 
 
     const handleNextMemoryItem = () => {
-        const nextIndex = (currentMemoryIndex + 1) % memoryItems.length;
+
+        const currentIndex = Number(currentMemoryIndex); // force to number
+   
+        const nextIndex = (currentIndex + 1) % memoryItems.length;
+        
+        console.log({
+            indexRef: indexRef.current,
+            currentMemoryIndex,
+            memoryItemsLength: memoryItems.length,
+            calc: (currentMemoryIndex + 1) % memoryItems.length,
+        });
         setCurrentMemoryIndex(nextIndex); // Then move to next
     }
     // const handleNextMemoryItem = useCallback(async (timerInterval) => {
@@ -615,8 +651,8 @@ const MemoryTester = () => {
 
                             <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
                                 <TextField
-                                    id="memoryIndexTextField"
-                                    label="Memory Index"
+                                    id="memoryListIndexTextField"
+                                    label="Memory List Index"
                                     variant="outlined"
                                     value={memoryIndex}
                                     onChange={(e) => setMemoryIndex(e.target.value)}
@@ -643,6 +679,22 @@ const MemoryTester = () => {
 
                             </Grid>
                         )}
+
+                        {showFields && (<Grid size={{ xs: 12, md: 6 }}>
+
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+                                <TextField
+                                    id="memoryIndexTextField"
+                                    label="Memory Index"
+                                    variant="outlined"
+                                    value={currentMemoryIndex}
+                                    onChange={(e) => setCurrentMemoryIndex(e.target.value)}
+                                    fullWidth
+                                />
+                                {/* just to keep the layout the same as the first line */}
+                                <Button disabled={true}>&nbsp;</Button>
+                            </Box>
+                        </Grid>)}
 
 
 
@@ -749,6 +801,26 @@ const MemoryTester = () => {
                         </Grid>
                     </Grid>
                 </Grid>
+                <Dialog
+                    open={confirmOpen}
+                    onClose={cancelDeleteRevisionList}
+                >
+                    <DialogTitle>{"Delete Revision List?"}</DialogTitle>
+                    <DialogContent>
+                        <DialogContentText>
+                            Are you sure you want to delete this revision list? This action cannot be undone.
+                        </DialogContentText>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={cancelDeleteRevisionList} color="primary">
+                            Cancel
+                        </Button>
+                        <Button onClick={confirmDeleteRevisionList} color="error" autoFocus>
+                            Delete
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
             </Box>
         </>
     )
