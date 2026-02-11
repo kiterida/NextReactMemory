@@ -12,7 +12,6 @@ import AddIcon from '@mui/icons-material/Add';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 
-
 const ITEM_TYPE = 'TREE_ITEM';
 
 const DraggableTreeItem = ({
@@ -21,6 +20,7 @@ const DraggableTreeItem = ({
   onDropUpdate,
   onSelectItem,
   onCreateNewChild,
+  onConfirmDialogBox,
   //expandedItemId,
  // setExpandedItemId,
 }) => {
@@ -187,8 +187,8 @@ const handleClose = () => {
   <MenuItem onClick={() => { handleClose(); updateStarred(item.id, !item.starred); }}>
     {item.starred ? 'Unstar' : 'Star'}
   </MenuItem>
-  <MenuItem onClick={() => { handleClose(); console.log('Insert 100 Items', item.id); }}>
-    Insert 100 Items
+  <MenuItem onClick={() => { onConfirmDialogBox(item.id); handleClose(); console.log('Insert 100 Items', item.id); }}>
+    Insert 10 Items
   </MenuItem>
   <MenuItem onClick={() => { handleClose(); console.log('Re-Index', item.id); }}>
     Re-Index from this Item

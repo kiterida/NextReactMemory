@@ -2,7 +2,7 @@
 
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
-import { fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred } from './memoryData';
+import { fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems } from './memoryData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -18,6 +18,11 @@ import CodeSnippet from './CodeSnippet';
 import Alert from '@mui/material/Alert';
 import Snackbar, { SnackbarCloseReason } from '@mui/material/Snackbar';
 import { useSearchParams } from 'next/navigation';
+import {
+  Dialog, DialogTitle, DialogContent,
+  DialogContentText, DialogActions
+} from '@mui/material';
+import { Insert100Items } from '../function_lib/treeDataFunctions';
 
 interface MemoriesViewProps {
   filterStarred?: boolean;
@@ -72,6 +77,11 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
   const [showSnackBar, setShowSnackBar] = useState(false);
 
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [contextMenuItemId, setContextMenuItemId] = useState<string | null>(null);
+
+  const [enableFocusItem, setEnableFocusItem] = useState(false);
+
   const handleClick = (event: React.MouseEvent, item: MemoryItem) => {
     if (event.metaKey || event.ctrlKey) {
       console.log("ctrl key pressed");
@@ -87,6 +97,11 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
 
 
+  };
+
+  const cancelDeleteRevisionList = () => {
+        console.log("User cancelled action");
+        setConfirmDialogOpen(false); // just close
   };
 
   useEffect(() => {
@@ -156,6 +171,11 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
 
   useEffect(() => {
+
+    console.log("DISABLED! focusId (Scroll into view) ");
+    if(enableFocusItem)
+    {
+
     if (focusId) {
       const ancestors = getAllAncestorIds(focusId, treeData);
       console.log("Ancestors:", ancestors);
@@ -185,6 +205,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
       //const node = findNodeById(treeData, focusId);
 
       //console.log("findNodeById:", node);
+    }
 
 
     }
@@ -298,7 +319,17 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     getTreeData();
   };
 
+  // Open the confirm dialog box.
+  const handleConfirmDialogBox = (itemId: string) => {
+    setContextMenuItemId(itemId);
+    setConfirmDialogOpen(true);
+  }
 
+  const handleInsertMultiple = () => {
+    insertMultipleItems(contextMenuItemId, 10);
+    setConfirmDialogOpen(false);
+    setTimeout(() => {getTreeData()}, 2000);
+  };
   const handleCreateNewChild = async (parentId: string) => {
     try {
 
@@ -403,6 +434,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           onDropUpdate={handleDropUpdate}
           onSelectItem={handleClick}
           onCreateNewChild={handleCreateNewChild}
+          onConfirmDialogBox={handleConfirmDialogBox}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
@@ -444,6 +476,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
   };
 
   return (
+    <>
     <Box
       sx={{
         display: 'flex', // always flex
@@ -547,6 +580,27 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         </Alert>
       </Snackbar>
     </Box>
+
+     <Dialog
+        open={confirmDialogOpen}
+        onClose={cancelDeleteRevisionList}
+    >
+        <DialogTitle>{"Are you sure you want to insert 10 Items?"}</DialogTitle>
+        <DialogContent>
+            <DialogContentText>
+                10 new sub items will be added to this item. The memory_key will start from the hightest value in the database and be incremented.
+            </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={cancelDeleteRevisionList} color="error">
+                Cancel
+            </Button>
+            <Button onClick={() => handleInsertMultiple()} color="primary" autoFocus>
+                Insert
+            </Button>
+        </DialogActions>
+    </Dialog>
+    </>
   )
 };
 

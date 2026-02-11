@@ -286,3 +286,68 @@ export const deleteRevisionList = async (memoryListIndex, subListIndex = null) =
   return data;
 }
 
+export const insertMultipleItems = async (parentId, amountOfItems) => {
+
+    if(!parentId)
+    {
+      alert("Invalid ParentId");
+      return;
+    }
+
+    try {
+
+      const parentIdValue = parentId === "null" ? null : parentId;
+      let highestMemoryKey = 0;
+      console.log("insertMultipleItems parentIdValue", parentIdValue)
+      console.log("insertMultipleItems parentId", parentId)
+
+       // Step 1: Query for the rows where parent_id matches and order by memory_key descending
+      const { data: highestMemoryKeyData, error: highestMemoryKeyError } = await supabase
+        .from('memory_items')
+        .select('memory_key')
+        .eq('parent_id', parentId)  // Filter by parent_id
+        //  .filter('memory_key', 'is', null)  // This will filter out null values
+        .order('memory_key', { ascending: false })  // Order by memory_key in descending order
+        .limit(1);  // Limit to only the row with the highest memory_key
+
+      highestMemoryKey = highestMemoryKeyData && highestMemoryKeyData.length > 0
+        ? highestMemoryKeyData[0].memory_key + 1  // Set to 1 if no rows exist
+        : 0;
+
+      if (highestMemoryKeyData) {
+        console.log('highestMemoryKeyData', highestMemoryKeyData[0])
+      }
+
+      if (highestMemoryKeyError) {
+        throw new Error("insertMultipleItems - Error fetching highest memory_key: " + highestMemoryKeyError.message);
+      }
+
+
+      // Step 2: Determine the new memory_key value
+      const newMemoryKey = highestMemoryKey++; 
+
+      // Step 3: Insert the new child item with the new memory_key
+
+        // New query
+        const records = Array.from({ length: amountOfItems }, (_, i) => ({
+          name: `New Child Item ${i + 1}`,
+          memory_key: newMemoryKey + i,  // 👈 incrementing
+          memory_image: '',
+          parent_id: parentId,
+        }));
+
+        const { data, error } = await supabase
+          .from('memory_items')
+          .insert(records)
+          .select(); // returns all inserted rows
+
+      if (error) {
+        console.error("insertMultipleItems - Error creating new child item:", error);
+      } else {
+        console.log('Inserted:', data);
+      }
+    } catch (err) {
+      console.error("Error in insertMultipleItems:", err);
+    }
+  };
+
