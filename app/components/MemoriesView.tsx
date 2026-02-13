@@ -57,6 +57,16 @@ export interface MemoryTreeItem {
   children?: MemoryTreeItem[];
 }
 
+function compareByMemoryKeyAsc(a: MemoryTreeItem, b: MemoryTreeItem): number {
+  const aKey = Number(a.memory_key);
+  const bKey = Number(b.memory_key);
+
+  const aValue = Number.isFinite(aKey) ? aKey : Number.MAX_SAFE_INTEGER;
+  const bValue = Number.isFinite(bKey) ? bKey : Number.MAX_SAFE_INTEGER;
+
+  return aValue - bValue;
+}
+
 const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => {
 
 
@@ -305,9 +315,11 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
       const parentChildren = Array.isArray(parent.children) ? parent.children : [];
       if (!parentChildren.some((c) => c.id === node.id)) {
-        parent.children = [...parentChildren, node];
+        parent.children = [...parentChildren, node].sort(compareByMemoryKeyAsc);
       } else {
-        parent.children = parentChildren.map((c) => (c.id === node.id ? node : c));
+        parent.children = parentChildren
+          .map((c) => (c.id === node.id ? node : c))
+          .sort(compareByMemoryKeyAsc);
       }
     }
 
