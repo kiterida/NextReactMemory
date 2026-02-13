@@ -2,7 +2,8 @@
 
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
-import { fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems } from './memoryData';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { fetchRootItems, fetchChildren, fetchChildrenWithPath, fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems } from './memoryData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -17,7 +18,7 @@ import ItemDetailsTab from './ItemDetailsTab';
 import CodeSnippet from './CodeSnippet';
 import Alert from '@mui/material/Alert';
 import Snackbar, { SnackbarCloseReason } from '@mui/material/Snackbar';
-import { useSearchParams } from 'next/navigation';
+//import { useSearchParams } from 'next/navigation';
 import {
   Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions
@@ -49,11 +50,47 @@ export interface MemoryTreeItem {
   memory_key?: string;
   memory_image?: string;
   starred?: boolean;
+  has_children?: boolean;   
+  child_count?: number;
+  isLoadingChildren?: boolean;
   // ... add any other fields your items have (like `title`, `starred`, etc.)
   children?: MemoryTreeItem[];
 }
 
 const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => {
+
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const hasFocusedRef = React.useRef<string | null>(null);
+  const focusTargetRef = React.useRef<string | null>(null);
+  const treeLoadVersionRef = React.useRef(0);
+
+  // If we have a focusId passed in fro the url, we want to remove it after we have focused
+  // the row.
+  React.useEffect(() => {
+    if (!focusId) return;
+
+    // prevent re-running for the same id
+    if (hasFocusedRef.current === focusId) return;
+    hasFocusedRef.current = focusId;
+    focusTargetRef.current = focusId;
+
+    // 1) do your expand + focus logic here
+    // expandAndFocus(focusId);
+    getSearchItemWithParents(focusId);
+
+    // 2) then remove "focus" from URL
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('focus');
+
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+
+    router.replace(nextUrl, { scroll: false });
+  }, [focusId, pathname, router, searchParams]);
+
 
   const [availableHeight, setAvailableHeight] = useState<number | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
@@ -79,8 +116,17 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [contextMenuItemId, setContextMenuItemId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteChildCount, setDeleteChildCount] = useState(0);
+  const [deleteTargetItem, setDeleteTargetItem] = useState<MemoryItem | null>(null);
+
 
   const [enableFocusItem, setEnableFocusItem] = useState(false);
+
+  const [expandedItems, setExpandedItems] = React.useState<string[]>([]);
+
+
+  
 
   const handleClick = (event: React.MouseEvent, item: MemoryItem) => {
     if (event.metaKey || event.ctrlKey) {
@@ -91,6 +137,8 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         setSelectedItems([...selectedItems, item.id]);
       }
     } else {
+      // If an item is expanded, it fires an onExpandedItemsChange={handleExpandedItemsChange}
+      // So we only deal with gettting the data for the item clicked here, not the children.
       setSelectedItems([item.id]);
       setSelectedItem(item);
     }
@@ -105,7 +153,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
   };
 
   useEffect(() => {
-    console.log("Selected items updated:", selectedItems);
+    //console.log("Selected items updated:", selectedItems);
   }, [selectedItems]);
 
 
@@ -154,62 +202,187 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     }
   }, []);
 
+  const getSearchItemWithParents = async (targetFocusId?: string | null) => {
+    const requestVersion = ++treeLoadVersionRef.current;
+
+    if (!targetFocusId) {
+      await getTreeData();
+      return;
+    }
+
+    const [rootItems, pathItems] = await Promise.all([
+      fetchRootItems(),
+      fetchChildrenWithPath(targetFocusId),
+    ]);
+
+    const normalizeNode = (raw: any): MemoryTreeItem => ({
+      ...raw,
+      id: String(raw.id),
+      parent_id: raw.parent_id === null || raw.parent_id === undefined ? null : String(raw.parent_id),
+      children: Array.isArray(raw.children)
+        ? raw.children.map((c: any) => ({
+            ...c,
+            id: String(c.id),
+            parent_id: c.parent_id === null || c.parent_id === undefined ? null : String(c.parent_id),
+          }))
+        : raw.children,
+    });
+
+    const roots: MemoryTreeItem[] = Array.isArray(rootItems)
+      ? rootItems.map((r: any) => normalizeNode(r))
+      : [];
+    const path: MemoryTreeItem[] = Array.isArray(pathItems)
+      ? pathItems.map((p: any) => normalizeNode(p))
+      : [];
+
+    const targetId = String(targetFocusId);
+    const includesTarget = path.some((p) => p.id === targetId);
+    if (!includesTarget) {
+      const { data: focusedItem, error: focusedItemError } = await supabase
+        .from('memory_items')
+        .select('id, name, description, parent_id, code_snippet, memory_key, memory_image, starred')
+        .eq('id', targetId)
+        .single();
+
+      if (!focusedItemError && focusedItem) {
+        path.push(normalizeNode(focusedItem));
+      }
+    }
+
+    if (path.length === 0) {
+      console.log("path.length === 0,", roots);
+      setTreeData(roots);
+      return;
+    }
+
+    const nodeMap = new Map<string, MemoryTreeItem>();
+    const mergedRoots: MemoryTreeItem[] = roots.map((r) => ({
+      ...r,
+      children: Array.isArray(r.children) ? [...r.children] : r.children,
+    }));
+
+    for (const root of mergedRoots) {
+      nodeMap.set(root.id, root);
+    }
+
+    // Merge path data into existing node objects to preserve root references.
+    for (const pathNode of path) {
+      const existing = nodeMap.get(pathNode.id);
+      if (existing) {
+        existing.name = pathNode.name;
+        existing.description = pathNode.description;
+        existing.parent_id = pathNode.parent_id;
+        existing.code_snippet = pathNode.code_snippet;
+        existing.memory_key = pathNode.memory_key;
+        existing.memory_image = pathNode.memory_image;
+        existing.starred = pathNode.starred;
+        existing.has_children = pathNode.has_children;
+        existing.child_count = pathNode.child_count;
+      } else {
+        nodeMap.set(pathNode.id, { ...pathNode, children: [] });
+      }
+    }
+
+    // Build direct focus path links.
+    for (const pathNode of path) {
+      const node = nodeMap.get(pathNode.id);
+      if (!node) continue;
+
+      if (node.children === undefined) {
+        node.children = [];
+      }
+
+      const parentId = node.parent_id;
+      if (!parentId) {
+        if (!mergedRoots.some((r) => r.id === node.id)) {
+          mergedRoots.push(node);
+        }
+        continue;
+      }
+
+      const parent = nodeMap.get(parentId);
+      if (!parent) continue;
+
+      const parentChildren = Array.isArray(parent.children) ? parent.children : [];
+      if (!parentChildren.some((c) => c.id === node.id)) {
+        parent.children = [...parentChildren, node];
+      } else {
+        parent.children = parentChildren.map((c) => (c.id === node.id ? node : c));
+      }
+    }
+
+    if (requestVersion !== treeLoadVersionRef.current) return;
+    setTreeData(mergedRoots);
+  }
+
   const getTreeData = async () => {
+    const requestVersion = ++treeLoadVersionRef.current;
+
     //console.log("Fetching tree data...");
-    const data = await fetchMemoryTree();
+   // const data = await fetchMemoryTree();
+
+    // Just load the parent lists first
+    const data = await fetchRootItems();
     //console.log("Tree data length = ", data.length)
 
+    if (requestVersion !== treeLoadVersionRef.current) return;
     setTreeData(data);
-    //console.log("data = ", data);
+    console.log("data = ", data);
     //console.log("Tree data fetched");
   };
 
   useEffect(() => {
-    // Fetch the tree data when the component is mounted
+    // Initial non-focus load only. If focusId exists, the focus effect handles loading.
+    if (focusId) return;
     getTreeData();
-  }, []); // Empty dependency array ensures this runs only once
+  }, []);
 
+  // useEffect(() => {
+  //   console.log("HERE WE GO")
+  //   getSearchItemWithParents();
+  //  // setEnableFocusItem(true);
+
+  // },[focusId]);
 
   useEffect(() => {
+    const effectiveFocusId = focusId ?? focusTargetRef.current;
+    if (!effectiveFocusId) return;
 
-    console.log("DISABLED! focusId (Scroll into view) ");
-    if(enableFocusItem)
-    {
+    const targetNode = findNodeById(treeData, effectiveFocusId);
+    if (!targetNode) return;
 
-    if (focusId) {
-      const ancestors = getAllAncestorIds(focusId, treeData);
-      console.log("Ancestors:", ancestors);
+    const ancestors = getAllAncestorIds(effectiveFocusId, treeData).map(String);
+    const missingAncestors = ancestors.filter((id) => !expandedItems.includes(id));
 
-      for (const ancestor of ancestors) {
-        console.log("setItemExpansion: ", ancestor);
-        if (apiRef.current) {
-          apiRef.current.setItemExpansion({
-            itemId: String(ancestor),
-            shouldBeExpanded: true,
-          });
-        }
-      }
-
-      // Step 2: Scroll into view after a short delay to ensure it's rendered
-      setTimeout(() => {
-        const el = document.getElementById(`tree-item-${focusId}`);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.classList.add('highlight');
-          setTimeout(() => el.classList.remove('highlight'), 1500);
-
-        } else {
-          console.warn("Could not find element to scroll into view for ID:", expandedItemId);
-        }
-      }, 500); // Adjust delay if needed
-      //const node = findNodeById(treeData, focusId);
-
-      //console.log("findNodeById:", node);
+    // Expand path first.
+    if (missingAncestors.length > 0) {
+      setExpandedItems((prev) => Array.from(new Set([...prev, ...ancestors])));
+      return;
     }
 
+    // Then scroll/focus when DOM node exists.
+    const domId = `tree-item-${effectiveFocusId}`;
+    const tryFocus = () => {
+      const el = document.getElementById(domId);
+      if (!el) return false;
 
-    }
-  }, [focusId, treeData]); // Add treeData here to ensure data is ready
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add('highlight');
+      setTimeout(() => el.classList.remove('highlight'), 1500);
+      focusTargetRef.current = null;
+      return true;
+    };
+
+    if (tryFocus()) return;
+
+    const raf = requestAnimationFrame(() => {
+      tryFocus();
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [focusId, treeData, expandedItems]);
+
+  
 
   function getAllAncestorIds(searchId: string, tree: MemoryTreeItem[]) {
     const path: string[] = [];
@@ -254,7 +427,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
   // UseEffect to call ExpandNewlyCreatedParent when data is ready and expandedItemId is set
   useEffect(() => {
-    if (expandedItemId && treeData.length > 0) {
+    if (expandedItemId && treeData.length > 0 && enableFocusItem) {
       ExpandNewlyCreatedParent(); // Call function to expand the parent after data is fetched
     }
   }, [expandedItemId, newItemId]); // Runs when either treeData or expandedItemId changes
@@ -278,45 +451,133 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     if (!selectedItem) return;
 
     const { id, memory_key, name, memory_image, code_snippet, description } = selectedItem;
-    await updateMemoryItem(id, memory_key, name, memory_image, code_snippet, description);
+    const updatedItem = await updateMemoryItem(id, memory_key, name, memory_image, code_snippet, description);
+    if (!updatedItem) return;
+
+    setSelectedItem((prev) => (prev && prev.id === id ? { ...prev, ...updatedItem } : prev));
+    setTreeData((prev) =>
+      updateNodeById(prev, id, (n) => ({
+        ...n,
+        ...updatedItem,
+      }))
+    );
+
     showMessage("Save successful");
-    getTreeData();
   };
 
-  const handleDelete = async () => {
-    if (!selectedItem) return;
+  const deleteItemAndChildren = async (itemId: string) => {
+    const { data: children } = await supabase
+      .from('memory_items')
+      .select('id')
+      .eq('parent_id', itemId);
 
-    // Function to recursively delete items and their children
-    const deleteItemAndChildren = async (itemId: string) => {
-      const { data: children } = await supabase
+    if (children) {
+      for (const child of children) {
+        await deleteItemAndChildren(child.id);
+      }
+    }
+
+    const { error } = await supabase
+      .from('memory_items')
+      .delete()
+      .eq('id', itemId);
+
+    if (error) {
+      console.error("Error deleting item:", error);
+    }
+  };
+
+  const performDelete = async (item: MemoryItem) => {
+    await deleteItemAndChildren(item.id);
+    setSelectedItem(null);
+    setSelectedItems((prev) => prev.filter((id) => id !== item.id));
+    setTreeData((prev) => removeNodeById(prev, item.id));
+  };
+
+  const countDescendants = async (itemId: string): Promise<number> => {
+    let total = 0;
+
+    const walk = async (id: string) => {
+      const { data: children, error } = await supabase
         .from('memory_items')
         .select('id')
-        .eq('parent_id', itemId);
-
-      if (children) {
-        for (const child of children) {
-          await deleteItemAndChildren(child.id);
-        }
-      }
-
-      // Then, delete the current item
-      const { error } = await supabase
-        .from('memory_items')
-        .delete()
-        .eq('id', itemId);
+        .eq('parent_id', id);
 
       if (error) {
-        console.error("Error deleting item:", error);
+        throw error;
+      }
+
+      const rows = children ?? [];
+      total += rows.length;
+
+      for (const child of rows) {
+        await walk(child.id);
       }
     };
 
+    await walk(itemId);
+    return total;
+  };
 
-    // Delete the selected item and all its children
-    await deleteItemAndChildren(selectedItem.id);
+  const resolveDeleteTarget = async (targetId?: string | number): Promise<MemoryItem | null> => {
+    if (targetId) {
+      const normalizedTargetId = String(targetId);
+      const fromTree = findNodeById(treeData, normalizedTargetId);
+      if (fromTree) return fromTree as MemoryItem;
 
-    setSelectedItem(null);
-    // Refresh the tree data after deletion
-    getTreeData();
+      const { data, error } = await supabase
+        .from('memory_items')
+        .select('id, name, description, parent_id, code_snippet, memory_key, memory_image, starred')
+        .eq('id', normalizedTargetId)
+        .single();
+
+      if (error) {
+        console.error("Error finding delete target:", error);
+        return null;
+      }
+
+      return data as MemoryItem;
+    }
+
+    return selectedItem;
+  };
+
+  const handleDelete = async (targetId?: string | number | React.MouseEvent) => {
+    const resolvedTargetId =
+      typeof targetId === 'string' || typeof targetId === 'number' ? targetId : undefined;
+    const itemToDelete = await resolveDeleteTarget(resolvedTargetId);
+    if (!itemToDelete) return;
+
+    try {
+      const descendants = await countDescendants(itemToDelete.id);
+
+      if (descendants > 0) {
+        setDeleteChildCount(descendants);
+        setDeleteTargetItem(itemToDelete);
+        setDeleteDialogOpen(true);
+        return;
+      }
+
+      await performDelete(itemToDelete);
+    } catch (error) {
+      console.error("Error preparing delete:", error);
+    }
+  };
+
+  const handleCancelDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setDeleteTargetItem(null);
+    setDeleteChildCount(0);
+  };
+
+  const handleConfirmDeleteDialog = async () => {
+    if (!deleteTargetItem) return;
+
+    const itemToDelete = deleteTargetItem;
+    await performDelete(itemToDelete);
+    setDeleteDialogOpen(false);
+    setDeleteTargetItem(null);
+    setDeleteChildCount(0);
   };
 
   // Open the confirm dialog box.
@@ -325,18 +586,18 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     setConfirmDialogOpen(true);
   }
 
-  const handleInsertMultiple = () => {
-    insertMultipleItems(contextMenuItemId, 10);
+  const handleInsertMultiple = async () => {
+    await insertMultipleItems(contextMenuItemId, 10);
     setConfirmDialogOpen(false);
-    setTimeout(() => {getTreeData()}, 2000);
+    await refreshParentChildren(contextMenuItemId);
   };
   const handleCreateNewChild = async (parentId: string) => {
     try {
 
       const parentIdValue = parentId === "null" ? null : parentId;
       let highestMemoryKey = 0;
-      console.log("handleCreateNewChild parentIdValue", parentIdValue)
-      console.log("handleCreateNewChild parentId", parentId)
+      //console.log("handleCreateNewChild parentIdValue", parentIdValue)
+      //console.log("handleCreateNewChild parentId", parentId)
 
       if (!parentId) {
         console.log('create differnt query for this one')
@@ -355,7 +616,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           ? highestMemoryKeyData[0].memory_key + 1  // Set to 1 if no rows exist
           : 0;
 
-        console.log("root?", highestMemoryKey, highestMemoryKeyData)
+        //console.log("root?", highestMemoryKey, highestMemoryKeyData)
         if (highestMemoryKeyError) {
           throw new Error("Error fetching highest memory_key: " + highestMemoryKeyError.message);
         }
@@ -376,7 +637,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           : 0;
 
         if (highestMemoryKeyData) {
-          console.log('highestMemoryKeyData', highestMemoryKeyData[0])
+          //console.log('highestMemoryKeyData', highestMemoryKeyData[0])
         }
 
         if (highestMemoryKeyError) {
@@ -406,15 +667,15 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         .select() // 👈 This tells Supabase to return the inserted row
         .single();
 
-      console.log('newItem inserted = ', newItem);
+      //console.log('newItem inserted = ', newItem);
 
       if (error) {
         console.error("Error creating new child item:", error);
       } else {
         setExpandedItemId(parentId);  // Set the expanded item to the newly created item's ID
         setNewItemId(newItem.id);
-        const updatedData = await fetchMemoryTree();
-        setTreeData(updatedData);  // Refresh tree data
+
+        await refreshParentChildren(parentId);
       }
     } catch (err) {
       console.error("Error in handleCreateNewChild:", err);
@@ -435,6 +696,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           onSelectItem={handleClick}
           onCreateNewChild={handleCreateNewChild}
           onConfirmDialogBox={handleConfirmDialogBox}
+          onDeleteItem={handleDelete}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
@@ -446,13 +708,19 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
   // Function to expand the newly created parent item
   const ExpandNewlyCreatedParent = () => {
-    console.log("ExpandNewlyCreatedParent");
+    //console.log("ExpandNewlyCreatedParent");
+
+    const fakeEvent = {
+      isPropagationStopped: () => false,
+      stopPropagation: () => {},
+    } as any;
 
     // Check if expandedItemId is set
     if (expandedItemId) {
-      console.log("Expanding item with id ", expandedItemId);
+      //console.log("Expanding item with id ", expandedItemId);
       if (apiRef.current) {
         apiRef.current.setItemExpansion({
+          event: fakeEvent,
           itemId: String(expandedItemId),
           shouldBeExpanded: true,
         });
@@ -474,6 +742,169 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
       //  apiRef.current.setItemExpansion(null, String(expandedItemId), true); // Expand the item
     }
   };
+
+  function updateNodeById(
+    nodes: MemoryTreeItem[],
+    id: string,
+    updater: (n: MemoryTreeItem) => MemoryTreeItem
+  ): MemoryTreeItem[] {
+    return nodes.map((n) => {
+      if (n.id == id) return updater(n);
+      if (!n.children) return n;
+      return { ...n, children: updateNodeById(n.children, id, updater) };
+    });
+  }
+
+  function findNodeById(nodes: MemoryTreeItem[], id: string): MemoryTreeItem | undefined {
+    for (const node of nodes) {
+      if (node.id == id) return node;
+      if (node.children) {
+        const found = findNodeById(node.children, id);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  }
+
+  function removeNodeById(nodes: MemoryTreeItem[], id: string): MemoryTreeItem[] {
+    const result: MemoryTreeItem[] = [];
+
+    for (const node of nodes) {
+      if (node.id == id) continue;
+
+      if (node.children) {
+        const nextChildren = removeNodeById(node.children, id);
+        const removedCount = node.children.length - nextChildren.length;
+
+        result.push({
+          ...node,
+          children: nextChildren,
+          child_count: typeof node.child_count === 'number'
+            ? Math.max(0, node.child_count - removedCount)
+            : node.child_count,
+          has_children: nextChildren.length > 0,
+        });
+      } else {
+        result.push(node);
+      }
+    }
+
+    return result;
+  }
+
+  const refreshParentChildren = React.useCallback(async (parentId: string | null) => {
+    if (!parentId) {
+      await getTreeData();
+      return;
+    }
+
+    setTreeData((prev) =>
+      updateNodeById(prev, parentId, (n) => ({ ...n, isLoadingChildren: true }))
+    );
+
+    try {
+      const children = await fetchChildren(parentId);
+
+      setTreeData((prev) =>
+        updateNodeById(prev, parentId, (n) => ({
+          ...n,
+          isLoadingChildren: false,
+          children: Array.isArray(children) ? children : [],
+          child_count: Array.isArray(children) ? children.length : 0,
+          has_children: Array.isArray(children) ? children.length > 0 : false,
+        }))
+      );
+    } catch (error) {
+      console.error("Failed to refresh children for parent:", parentId, error);
+      setTreeData((prev) =>
+        updateNodeById(prev, parentId, (n) => ({ ...n, isLoadingChildren: false }))
+      );
+    }
+  }, []);
+
+
+    const ensureChildrenLoaded = React.useCallback(async (itemId: string) => {
+      // find the node quickly if you have an id->node map, but recursion is fine to start
+      const node = findNodeById(treeData, itemId);
+
+      if (!node) {
+        alert("didn't find node:");
+        alert(itemId);
+        return;
+      }
+
+      // already loaded or currently loading
+      if (node.children !== undefined || node.isLoadingChildren) {
+        return;
+      }
+
+   
+      // mark loading
+      setTreeData((prev) =>
+        updateNodeById(prev, itemId, (n) => ({ ...n, isLoadingChildren: true }))
+      );
+
+      try {
+        const children = await fetchChildren(itemId);
+
+        setTreeData((prev) =>
+          updateNodeById(prev, itemId, (n) => ({
+            ...n,
+            isLoadingChildren: false,
+            children: Array.isArray(children) ? children : [],
+          }))
+        );
+      } catch (error) {
+        console.error("Failed to load children for item:", itemId, error);
+        setTreeData((prev) =>
+          updateNodeById(prev, itemId, (n) => ({
+            ...n,
+            isLoadingChildren: false,
+            children: [],
+          }))
+        );
+      }
+  }, [treeData]);
+
+  const handleExpandedItemsChange = React.useCallback(
+    async (_event: unknown, nextExpanded: string[]) => {
+      // figure out which item(s) were newly expanded
+       //console.log("handleExpandedItemsChange");
+    
+      const newlyExpanded = nextExpanded.filter((id) => !expandedItems.includes(id));
+
+      setExpandedItems(nextExpanded);
+
+      //console.log("Newley expanded: ", newlyExpanded);
+
+      // load children for any newly expanded item
+      for (const id of newlyExpanded) {
+        await ensureChildrenLoaded(id);
+      }
+    },
+    [expandedItems, ensureChildrenLoaded]
+  );
+
+  useEffect(() => {
+    const effectiveFocusId = focusId ?? focusTargetRef.current;
+    if (!effectiveFocusId) return;
+    if (expandedItems.length === 0) return;
+
+    let cancelled = false;
+
+    const loadExpandedForFocus = async () => {
+      for (const id of expandedItems) {
+        if (cancelled) return;
+        await ensureChildrenLoaded(id);
+      }
+    };
+
+    loadExpandedForFocus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [focusId, expandedItems, ensureChildrenLoaded]);
 
   return (
     <>
@@ -502,6 +933,8 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
             multiSelect
             apiRef={apiRef}
             selectedItems={selectedItems.map(String)} // IDs must be strings
+            expandedItems={expandedItems}
+            onExpandedItemsChange={handleExpandedItemsChange}
           >
             {mapTreeData(treeData)}
           </SimpleTreeView>
@@ -553,7 +986,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
             >
               <ButtonGroup variant="contained" sx={{ width: '100%' }}>
                 <Button onClick={handleSave} sx={{ width: '50%' }}>Save</Button>
-                <Button color="error" onClick={handleDelete} sx={{ width: '50%' }}>
+                <Button color="error" onClick={() => handleDelete()} sx={{ width: '50%' }}>
                   Delete
                 </Button>
               </ButtonGroup>
@@ -599,6 +1032,26 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
                 Insert
             </Button>
         </DialogActions>
+    </Dialog>
+
+    <Dialog
+      open={deleteDialogOpen}
+      onClose={handleCancelDeleteDialog}
+    >
+      <DialogTitle>{"Delete Item and Children?"}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          This will delete the selected item and {deleteChildCount} child item{deleteChildCount === 1 ? '' : 's'}. This action cannot be undone.
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancelDeleteDialog} color="primary">
+          Cancel
+        </Button>
+        <Button onClick={handleConfirmDeleteDialog} color="error" autoFocus>
+          Delete All
+        </Button>
+      </DialogActions>
     </Dialog>
     </>
   )

@@ -21,6 +21,7 @@ const DraggableTreeItem = ({
   onSelectItem,
   onCreateNewChild,
   onConfirmDialogBox,
+  onDeleteItem,
   //expandedItemId,
  // setExpandedItemId,
 }) => {
@@ -97,8 +98,14 @@ const handleClose = () => {
   // };
 
   const getSubItemCount = (item) => {
-    return item.children ? item.children.length : 0;
+    // Instead of this
+   // return item.children ? item.children.length : 0;
+
+   // Now using
+   return item.child_count;
   };
+
+  //const item.child_count
 
   // console.log("item id: ", item.id);
 
@@ -169,7 +176,21 @@ const handleClose = () => {
         opacity: dragActive ? 0.5 : 1,
       }}
     >
-      {children}
+      {/* 1) if we have loaded children, render them */}
+      {Array.isArray(item.children) && item.children.length > 0 ? (
+        children
+      ) : null}
+
+      {/* 2) if not loaded yet but child_count says it has kids, render a placeholder */}
+      {item.children === undefined && (item.child_count ?? 0) > 0 ? (
+        <TreeItem
+          itemId={`${item.id}__placeholder`}
+          label={item.isLoadingChildren ? 'Loading…' : 'Expand to load…'}
+          disabled
+        />
+      ) : null}
+
+      {/* 3) if loaded but empty, render nothing */}
     </TreeItem>
     <Menu
   open={contextMenu !== null}
@@ -192,6 +213,9 @@ const handleClose = () => {
   </MenuItem>
   <MenuItem onClick={() => { handleClose(); console.log('Re-Index', item.id); }}>
     Re-Index from this Item
+  </MenuItem>
+    <MenuItem onClick={() => { handleClose(); onDeleteItem(item.id); }}>
+    Delete Item
   </MenuItem>
 </Menu>
 </>

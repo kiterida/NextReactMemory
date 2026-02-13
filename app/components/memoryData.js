@@ -17,9 +17,46 @@ export const searchMemoryItems = async (searchString) => {
   return data;
 };
 
+export const fetchRootItems = async () => {
+  const { data, error } = await supabase
+  .rpc('get_root_memory_items');
+
+  if(error){
+    console.log("Error: fetchRootItems failed: Reason = ", error);
+  }else{
+    return data;
+  }
+}
+
+export async function fetchChildren(parentId) {
+  console.log("fetchChildren");
+  const { data, error } = await supabase.rpc('get_children', {
+    p_parent_id: Number(parentId),
+  });
+  if (error) {
+     console.log("Error: fetchChildren failed: Reason = ", error);
+    throw error;
+  }
+  else{
+    console.log("fetchChildren successful: ", data);
+    return data;
+  }
+ 
+}
+
+
+// Use this call when searching to to load the full path
+export async function fetchChildrenWithPath(focusId) {
+  const { data, error } = await supabase.rpc('get_children_with_path', {
+    p_focus_id: Number(focusId),
+  });
+  if (error) throw error;
+  return data;
+}
 
 
 // Fetch memory tree data from Supabase, order it by integer memory_key, and structure it as a nested tree
+// This function returns the entire table which is too much. Now using fetchRootItems
 export const fetchMemoryTree = async () => {
 
   const { data, error } = await supabase
@@ -32,7 +69,7 @@ export const fetchMemoryTree = async () => {
     return [];
   }
 
-  console.log("fetchMemoryTree data length = ", data.length);
+  console.log("fetchMemoryTree rows = ", data.length);
 
   // Sort data with null parent_id items first, ordered by integer memory_key
   data.sort((a, b) => {
@@ -189,15 +226,19 @@ export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
 
 // Update a memory item in Supabase (for the edit form)
 export const updateMemoryItem = async (id, memory_key, name, memory_image, code_snippet, description) => {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('memory_items')
     .update({ memory_key, name, memory_image, code_snippet, description })
-    .eq('id', id);
+    .eq('id', id)
+    .select('*')
+    .single();
 
   if (error) {
     console.error("Error updating memory item:", error);
+    return null;
   } else {
     console.log("Item updated successfully!");
+    return data;
   }
 };
 
