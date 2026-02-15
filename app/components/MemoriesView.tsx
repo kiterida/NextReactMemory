@@ -363,6 +363,10 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     const targetNode = findNodeById(treeData, effectiveFocusId);
     if (!targetNode) return;
 
+    // Keep UI selection in sync when we focus/scroll to a searched item.
+    setSelectedItems([String(effectiveFocusId)]);
+    setSelectedItem(targetNode as MemoryItem);
+
     const ancestors = getAllAncestorIds(effectiveFocusId, treeData).map(String);
     const missingAncestors = ancestors.filter((id) => !expandedItems.includes(id));
 
@@ -380,7 +384,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add('highlight');
-      setTimeout(() => el.classList.remove('highlight'), 1500);
+      //setTimeout(() => el.classList.remove('highlight'), 3500);
       focusTargetRef.current = null;
       return true;
     };
@@ -390,6 +394,8 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     const raf = requestAnimationFrame(() => {
       tryFocus();
     });
+
+    setTimeout(()=> { tryFocus()}, 1000);
 
     return () => cancelAnimationFrame(raf);
   }, [focusId, treeData, expandedItems]);
@@ -840,8 +846,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
       const node = findNodeById(treeData, itemId);
 
       if (!node) {
-        alert("didn't find node:");
-        alert(itemId);
+        console.log("ensureChildrenLoaded: Didn't find Node");
         return;
       }
 
@@ -970,7 +975,12 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
             {selectedItem.description && (
               <Box sx={{ flexShrink: 0, overflow: 'auto', maxHeight: '200px', marginBottom: '10px' }}>
                 <Card>
-                  <CardContent>
+                  <CardContent
+                    sx={{
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
                     {selectedItem.description}
                   </CardContent>
                 </Card>

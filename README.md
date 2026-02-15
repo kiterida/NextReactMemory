@@ -1,5 +1,5 @@
 # How to
-Run 'npm run dev' to work on the project.
+Run `npm run dev` to work on the project.
 
 # How to update to github
 

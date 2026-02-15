@@ -71,6 +71,8 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
           value={selectedItem.name}
           onChange={(e) => setSelectedItem({ ...selectedItem, name: e.target.value })}
           fullWidth
+          multiline
+          rows={4}
           margin="normal"
         />
         <TextField
@@ -78,6 +80,8 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
           value={selectedItem.memory_image}
           onChange={(e) => setSelectedItem({ ...selectedItem, memory_image: e.target.value })}
           fullWidth
+          multiline
+          rows={4}
           margin="normal"
         />
       </CustomTabPanel>
