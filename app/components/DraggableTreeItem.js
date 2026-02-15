@@ -22,6 +22,7 @@ const DraggableTreeItem = ({
   onCreateNewChild,
   onConfirmDialogBox,
   onDeleteItem,
+  onShowMessage,
   //expandedItemId,
  // setExpandedItemId,
 }) => {
@@ -64,7 +65,13 @@ const DraggableTreeItem = ({
         resetParentIdOnLeftDrop(draggedItem);
       } else {
         console.log("onDropUpdate: draggedItem.id: ", draggedItem.id, " item.id: ", item.id);
-        onDropUpdate(draggedItem.id, item.id);
+        if(draggedItem.parent_id != null)
+        {
+          onDropUpdate(draggedItem.id, item.id);
+        }else{
+          onShowMessage("You can't drag & drop a parent Memory List.", "info");
+        }
+        
       }
     }
     ,

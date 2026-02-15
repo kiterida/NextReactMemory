@@ -332,7 +332,7 @@ export const insertMultipleItems = async (parentId, amountOfItems) => {
     if(!parentId)
     {
       alert("Invalid ParentId");
-      return;
+      return [];
     }
 
     try {
@@ -384,11 +384,17 @@ export const insertMultipleItems = async (parentId, amountOfItems) => {
 
       if (error) {
         console.error("insertMultipleItems - Error creating new child item:", error);
+        throw new Error(err);
       } else {
         console.log('Inserted:', data);
+        return data;
       }
     } catch (err) {
-      console.error("Error in insertMultipleItems:", err);
+      //console.error("Error in insertMultipleItems:", err);
+      // Throw the error back up to the calling function
+      throw new Error(err);
     }
+
+    return [];
   };
 

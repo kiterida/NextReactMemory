@@ -148,8 +148,15 @@ export default function Layout(props: { children: React.ReactNode }) {
   //   </>
   // }
 
-    const bang = async () => {
-    console.log("Bang: ", await createNewMemoryList());
+  const onCreateNewMemoryList = async () => {
+    const newItemId = await createNewMemoryList();
+    if (!newItemId) return;
+
+    window.dispatchEvent(
+      new CustomEvent("memory-list-created", {
+        detail: { id: String(newItemId) },
+      })
+    );
   }
 
   const addMemoryToTestList = () => {
@@ -194,7 +201,7 @@ export default function Layout(props: { children: React.ReactNode }) {
     ) : (
       <PageHeaderToolbar>
           <Tooltip title="Create New Memory List">
-          <IconButton onClick={bang} color="success" aria-label="Create New Memory List">
+          <IconButton onClick={onCreateNewMemoryList} color="success" aria-label="Create New Memory List">
             <AddCircleIcon />
           </IconButton>
           </Tooltip>

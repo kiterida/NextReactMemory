@@ -1,10 +1,12 @@
-# How to
+# How to start the project
+
 Run `npm run dev` to work on the project.
 
 # How to update to github
 
 First build the project
 `npm run build`
+
 Then add the changes to git
 `git add .`
 `git commit -m "Describe your changes"`

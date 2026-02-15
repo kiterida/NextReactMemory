@@ -16,7 +16,7 @@ import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
 import ItemDetailsTab from './ItemDetailsTab';
 import CodeSnippet from './CodeSnippet';
-import Alert from '@mui/material/Alert';
+import Alert, { AlertColor } from '@mui/material/Alert';
 import Snackbar, { SnackbarCloseReason } from '@mui/material/Snackbar';
 //import { useSearchParams } from 'next/navigation';
 import {
@@ -123,6 +123,8 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
   const [newItemId, setNewItemId] = useState(null);
 
   const [showSnackBar, setShowSnackBar] = useState(false);
+  const [snackBarMsg, setSnackBarMsg] = useState("");
+  const [snackBarMsgType, setSnackBarMsgType] = useState<AlertColor>("success");
 
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [contextMenuItemId, setContextMenuItemId] = useState<string | null>(null);
@@ -349,6 +351,22 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     getTreeData();
   }, []);
 
+  useEffect(() => {
+    const handleMemoryListCreated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ id?: string }>;
+      const createdId = customEvent.detail?.id;
+      if (!createdId) return;
+
+      focusTargetRef.current = String(createdId);
+      getSearchItemWithParents(String(createdId));
+    };
+
+    window.addEventListener("memory-list-created", handleMemoryListCreated);
+    return () => {
+      window.removeEventListener("memory-list-created", handleMemoryListCreated);
+    };
+  }, []);
+
   // useEffect(() => {
   //   console.log("HERE WE GO")
   //   getSearchItemWithParents();
@@ -384,7 +402,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add('highlight');
-      //setTimeout(() => el.classList.remove('highlight'), 3500);
+      setTimeout(() => el.classList.remove('highlight'), 5000);
       focusTargetRef.current = null;
       return true;
     };
@@ -454,6 +472,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     if (newParentId == "") {
       newParentId = "";
     }
+
     const allItems = Array.from(new Set([...selectedItems, draggedItemId]));
     console.log("allItems: ", allItems);
     await updateMemoryItemParent(allItems, newParentId);
@@ -461,8 +480,18 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     setTreeData(data);
   };
 
-  const showMessage = (msg: string) => {
+  /* Message Types:
+  'error'
+| 'info'
+| 'success'
+| 'warning'
+*/
+  const showMessage = (msg: string, type: AlertColor = "success") => {
+
+    setSnackBarMsgType(type);
+    setSnackBarMsg(msg);
     setShowSnackBar(true);
+    
   }
 
   const handleSave = async () => {
@@ -567,6 +596,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     if (!itemToDelete) return;
 
     try {
+      showMessage("Checking database for child items. Please wait.", "info")
       const descendants = await countDescendants(itemToDelete.id);
 
       if (descendants > 0) {
@@ -575,8 +605,9 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         setDeleteDialogOpen(true);
         return;
       }
-
+      
       await performDelete(itemToDelete);
+      showMessage("Row deleted.", "info")
     } catch (error) {
       console.error("Error preparing delete:", error);
     }
@@ -592,7 +623,9 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     if (!deleteTargetItem) return;
 
     const itemToDelete = deleteTargetItem;
+    showMessage("Deleting rows. Please wait...", "warning")
     await performDelete(itemToDelete);
+    showMessage("Rows deleted.", "info")
     setDeleteDialogOpen(false);
     setDeleteTargetItem(null);
     setDeleteChildCount(0);
@@ -605,7 +638,31 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
   }
 
   const handleInsertMultiple = async () => {
-    await insertMultipleItems(contextMenuItemId, 10);
+    try{
+     // const data = await insertMultipleItems(contextMenuItemId, 10);
+     // showMessage("Succsefully inserted: " + data.length.toString() + " Rows", 'success');
+
+      const data = await insertMultipleItems(contextMenuItemId, 10);
+
+      showMessage(
+        `Successfully inserted: ${data.length} Rows`,
+        "success"
+      );
+    }
+    catch (error: unknown) {
+      let message = "Unknown error";
+
+      if (error instanceof Error) {
+        message = error.message;
+      }
+
+      showMessage(
+        `Failed to insert items! ${message}`,
+        "error"
+      );
+    }
+    
+    
     setConfirmDialogOpen(false);
     await refreshParentChildren(contextMenuItemId);
   };
@@ -715,6 +772,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           onCreateNewChild={handleCreateNewChild}
           onConfirmDialogBox={handleConfirmDialogBox}
           onDeleteItem={handleDelete}
+          onShowMessage={showMessage}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
@@ -1027,11 +1085,11 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         onClose={() => { setShowSnackBar(false) }}
       >
         <Alert
-          severity="success"
+          severity={snackBarMsgType}
           variant="filled"
           sx={{ width: '100%' }}
         >
-          Save Successful
+          {snackBarMsg}
         </Alert>
       </Snackbar>
     </Box>
