@@ -12,6 +12,10 @@ Then add the changes to git
 `git commit -m "Describe your changes"`
 `git push -u origin main`
 
+# View on Github
+https://github.com/kiterida/NextReactMemory
+
+
 # Create Toolpad App
 
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-toolpad-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).

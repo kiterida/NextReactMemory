@@ -23,6 +23,7 @@ const DraggableTreeItem = ({
   onConfirmDialogBox,
   onDeleteItem,
   onShowMessage,
+  onReIndexMemoryKeysFromId,
   //expandedItemId,
  // setExpandedItemId,
 }) => {
@@ -93,6 +94,16 @@ const handleClose = () => {
   setContextMenu(null);
 };
 
+
+const checkReIndexParentId = (indexId, parent_id) => {
+  if(parent_id == null){
+    onShowMessage("You can't re-index the memory_key values for a parent Memory Lists", "warning");
+  }
+  else{
+    onReIndexMemoryKeysFromId(indexId);
+  }
+  
+}
 
   // const handleExpandChange = () => {
   //   if (item && expandedItemId !== null) {
@@ -218,7 +229,7 @@ const handleClose = () => {
   <MenuItem onClick={() => { onConfirmDialogBox(item.id); handleClose(); console.log('Insert 100 Items', item.id); }}>
     Insert 10 Items
   </MenuItem>
-  <MenuItem onClick={() => { handleClose(); console.log('Re-Index', item.id); }}>
+  <MenuItem onClick={() => { handleClose(); checkReIndexParentId(item.id, item.parent_id); }}>
     Re-Index from this Item
   </MenuItem>
     <MenuItem onClick={() => { handleClose(); onDeleteItem(item.id); }}>

@@ -637,6 +637,83 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     setConfirmDialogOpen(true);
   }
 
+  const handleReIndexMemoryKeysFromId = async (indexId: string) => {
+    const startInput = window.prompt('Enter new starting memory_key value:', '0');
+    if (startInput === null) {
+      return;
+    }
+
+    const startKey = Number.parseInt(startInput, 10);
+    if (!Number.isInteger(startKey)) {
+      showMessage("Start value must be a valid integer.", "error");
+      return;
+    }
+
+    try {
+      const { data: anchorRow, error: anchorError } = await supabase
+        .from('memory_items')
+        .select('id, parent_id, memory_key')
+        .eq('id', indexId)
+        .single();
+
+      if (anchorError || !anchorRow) {
+        throw new Error(anchorError?.message ?? "Failed to load source item.");
+      }
+
+      const anchorMemoryKey = Number(anchorRow.memory_key);
+      if (!Number.isFinite(anchorMemoryKey)) {
+        throw new Error("Source item memory_key is not a valid number.");
+      }
+
+      let query = supabase
+        .from('memory_items')
+        .select('id, memory_key')
+        .gte('memory_key', anchorMemoryKey)
+        .order('memory_key', { ascending: true })
+        .order('id', { ascending: true });
+
+      if (anchorRow.parent_id === null) {
+        query = query.is('parent_id', null);
+      } else {
+        query = query.eq('parent_id', anchorRow.parent_id);
+      }
+
+      const { data: rowsToReindex, error: rowsError } = await query;
+      if (rowsError) {
+        throw new Error(rowsError.message);
+      }
+
+      const rows = rowsToReindex ?? [];
+      if (rows.length === 0) {
+        showMessage("No rows found to re-index from this item.", "info");
+        return;
+      }
+
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        const nextKey = startKey + i;
+
+        const { error: updateError } = await supabase
+          .from('memory_items')
+          .update({ memory_key: nextKey })
+          .eq('id', row.id);
+
+        if (updateError) {
+          throw new Error(`Failed updating row ${row.id}: ${updateError.message}`);
+        }
+      }
+
+      const parentIdForRefresh =
+        anchorRow.parent_id === null ? null : String(anchorRow.parent_id);
+      await refreshParentChildren(parentIdForRefresh);
+      showMessage(`Re-indexed ${rows.length} row(s) starting at ${startKey}.`, "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("Error re-indexing memory keys:", error);
+      showMessage(`Failed to re-index memory keys: ${message}`, "error");
+    }
+  }
+
   const handleInsertMultiple = async () => {
     try{
      // const data = await insertMultipleItems(contextMenuItemId, 10);
@@ -773,6 +850,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           onConfirmDialogBox={handleConfirmDialogBox}
           onDeleteItem={handleDelete}
           onShowMessage={showMessage}
+          onReIndexMemoryKeysFromId={handleReIndexMemoryKeysFromId}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
