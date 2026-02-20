@@ -139,6 +139,18 @@ export default function Layout(props: { children: React.ReactNode }) {
       }
       : undefined;
 
+  const contentSx = {
+    maxWidth: '100% !important',
+    margin: '0 !important',
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    p: 0,
+  };
+
+  const isSingleListViewRoute = pathname === '/singleListView';
+
   // ✅ Only use search bar on specific routes
   const showSearchToolbar = pathname === '/memories' || pathname === '/starredLists';
 
@@ -235,9 +247,15 @@ export default function Layout(props: { children: React.ReactNode }) {
         toolbarActions: showSearchToolbar ? ToolbarActionsSearch : undefined,
       }}
     >
-      <PageContainer title={title} sx={sxOverride} {...(renderHeader ? { slots: { header: CustomPageHeaderComponent } } : {})}  >
-        {props.children}
-      </PageContainer>
+      {isSingleListViewRoute ? (
+        <Box sx={{ ...contentSx, pt: '40px' }}>
+          {props.children}
+        </Box>
+      ) : (
+        <PageContainer title={title} sx={sxOverride} {...(renderHeader ? { slots: { header: CustomPageHeaderComponent } } : {})}  >
+          {props.children}
+        </PageContainer>
+      )}
     </DashboardLayout>
   );
 }

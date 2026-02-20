@@ -25,6 +25,7 @@ const DraggableTreeItem = ({
   onShowMessage,
   onReIndexMemoryKeysFromId,
   onPromoteToParentList,
+  onSingleListView,
   //expandedItemId,
  // setExpandedItemId,
 }) => {
@@ -235,6 +236,9 @@ const checkReIndexParentId = (indexId, parent_id) => {
   </MenuItem>
   <MenuItem onClick={() => { handleClose(); onPromoteToParentList(item.id); }}>
     Promote to parent List
+  </MenuItem>
+  <MenuItem onClick={() => { handleClose(); onSingleListView(item.id); }}>
+    Single List View
   </MenuItem>
     <MenuItem onClick={() => { handleClose(); onDeleteItem(item.id); }}>
     Delete Item

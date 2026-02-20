@@ -28,6 +28,7 @@ import { Insert100Items } from '../function_lib/treeDataFunctions';
 interface MemoriesViewProps {
   filterStarred?: boolean;
   focusId?: string | null; // or just `string` depending on your logic
+  singleListView?: string | null;
 }
 
 type MemoryItem = {
@@ -67,7 +68,7 @@ function compareByMemoryKeyAsc(a: MemoryTreeItem, b: MemoryTreeItem): number {
   return aValue - bValue;
 }
 
-const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => {
+const MemoriesView = ({ filterStarred = false, focusId, singleListView }: MemoriesViewProps) => {
 
 
   const router = useRouter();
@@ -223,7 +224,9 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     }
 
     const [rootItems, pathItems] = await Promise.all([
-      fetchRootItems(),
+      (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
+        singleListView ?? null
+      ),
       fetchChildrenWithPath(targetFocusId),
     ]);
 
@@ -336,7 +339,9 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
    // const data = await fetchMemoryTree();
 
     // Just load the parent lists first
-    const data = await fetchRootItems();
+    const data = await (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
+      singleListView ?? null
+    );
     //console.log("Tree data length = ", data.length)
 
     if (requestVersion !== treeLoadVersionRef.current) return;
@@ -349,7 +354,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     // Initial non-focus load only. If focusId exists, the focus effect handles loading.
     if (focusId) return;
     getTreeData();
-  }, []);
+  }, [singleListView]);
 
   useEffect(() => {
     const handleMemoryListCreated = (event: Event) => {
@@ -468,7 +473,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     }
   }, [expandedItemId, newItemId]); // Runs when either treeData or expandedItemId changes
 
-  const handleDropUpdate = async (draggedItemId: string, newParentId: string) => {
+  const handleDropUpdate = async (draggedItemId: string, newParentId: string | null) => {
     if (newParentId == "") {
       newParentId = "";
     }
@@ -484,6 +489,16 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     await updateMemoryItemParent([itemId], null);
     await getTreeData();
     showMessage("Item promoted to parent list.", "success");
+  };
+
+  const handleSingleListView = (itemId: string) => {
+    const clickedItem = findNodeById(treeData, String(itemId));
+    if (!clickedItem || clickedItem.parent_id !== null) {
+      showMessage("Single List View is only available for parent Memory Lists.", "warning");
+      return;
+    }
+
+    router.push(`/singleListView?listId=${encodeURIComponent(String(itemId))}`);
   };
 
   /* Message Types:
@@ -858,6 +873,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           onShowMessage={showMessage}
           onReIndexMemoryKeysFromId={handleReIndexMemoryKeysFromId}
           onPromoteToParentList={handlePromoteToParentList}
+          onSingleListView={handleSingleListView}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
@@ -955,7 +971,10 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
 
   const refreshParentChildren = React.useCallback(async (parentId: string | null) => {
     if (!parentId) {
-      await getTreeData();
+      const data = await (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
+        singleListView ?? null
+      );
+      setTreeData(data);
       return;
     }
 
@@ -981,7 +1000,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
         updateNodeById(prev, parentId, (n) => ({ ...n, isLoadingChildren: false }))
       );
     }
-  }, []);
+  }, [singleListView]);
 
 
     const ensureChildrenLoaded = React.useCallback(async (itemId: string) => {

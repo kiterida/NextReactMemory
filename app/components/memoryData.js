@@ -17,14 +17,35 @@ export const searchMemoryItems = async (searchString) => {
   return data;
 };
 
-export const fetchRootItems = async () => {
+export const fetchRootItems = async (singleListViewId = null) => {
+  if (singleListViewId !== null && singleListViewId !== undefined && singleListViewId !== '') {
+    const listId = Number(singleListViewId);
+    if (!Number.isFinite(listId)) {
+      return [];
+    }
+
+    // Use the same RPC as default root loading so child metadata fields
+    // (like has_children/child_count) remain consistent for expand behavior.
+    const { data, error } = await supabase
+      .rpc('get_root_memory_items');
+
+    if (error) {
+      console.log("Error: fetchRootItems failed: Reason = ", error);
+      return [];
+    }
+
+    const rows = data ?? [];
+    return rows.filter((row) => Number(row.id) === listId);
+  }
+
   const { data, error } = await supabase
-  .rpc('get_root_memory_items');
+    .rpc('get_root_memory_items');
 
   if(error){
     console.log("Error: fetchRootItems failed: Reason = ", error);
+    return [];
   }else{
-    return data;
+    return data ?? [];
   }
 }
 
