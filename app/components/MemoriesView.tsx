@@ -480,6 +480,12 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
     setTreeData(data);
   };
 
+  const handlePromoteToParentList = async (itemId: string) => {
+    await updateMemoryItemParent([itemId], null);
+    await getTreeData();
+    showMessage("Item promoted to parent list.", "success");
+  };
+
   /* Message Types:
   'error'
 | 'info'
@@ -851,6 +857,7 @@ const MemoriesView = ({ filterStarred = false, focusId }: MemoriesViewProps) => 
           onDeleteItem={handleDelete}
           onShowMessage={showMessage}
           onReIndexMemoryKeysFromId={handleReIndexMemoryKeysFromId}
+          onPromoteToParentList={handlePromoteToParentList}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
