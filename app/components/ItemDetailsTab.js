@@ -93,8 +93,14 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
           onChange={(e) => setSelectedItem({ ...selectedItem, description: e.target.value })}
           fullWidth
           multiline
-          rows={4}
+          minRows={12}
           margin="normal"
+          sx={{
+            '& .MuiInputBase-inputMultiline': {
+              minHeight: '5vh',
+              resize: 'vertical',
+            },
+          }}
         />
       </CustomTabPanel>
 

@@ -1135,7 +1135,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
             <ItemDetailsTab selectedItem={selectedItem} setSelectedItem={setSelectedItem} />
 
             {selectedItem.description && (
-              <Box sx={{ flexShrink: 0, overflow: 'auto', maxHeight: '200px', marginBottom: '10px' }}>
+              <Box sx={{ flexShrink: 0, overflow: 'auto', maxHeight: '400px', marginBottom: '10px' }}>
                 <Card>
                   <CardContent
                     sx={{

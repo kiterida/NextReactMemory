@@ -72,6 +72,11 @@ const NAVIGATION: Navigation = [
     icon: <BookIcon />,
   },
   {
+    segment: 'listTester',
+    title: 'List Tester',
+    icon: <BookIcon />,
+  },
+  {
     segment: 'budget',
     title: 'Budget',
     icon: <BookIcon />,
