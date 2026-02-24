@@ -3,7 +3,7 @@
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { fetchRootItems, fetchChildren, fetchChildrenWithPath, fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems } from './memoryData';
+import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems } from './memoryData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -159,6 +159,17 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
 
   };
+
+  const handleSetAsMemoryList = async (itemId : string, bSet : string) => {
+
+     const newListId = await toggleMemoryList(itemId,bSet);  
+
+     if(newListId != null)
+      showMessage("Set to Memory List: memory_list_key: " + newListId);
+    else
+      showMessage("Unset as Memory List");
+
+  }
 
   const cancelDeleteRevisionList = () => {
         console.log("User cancelled action");
@@ -874,6 +885,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           onReIndexMemoryKeysFromId={handleReIndexMemoryKeysFromId}
           onPromoteToParentList={handlePromoteToParentList}
           onSingleListView={handleSingleListView}
+          onSetAsMemoryList={handleSetAsMemoryList}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>

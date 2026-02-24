@@ -26,6 +26,7 @@ const DraggableTreeItem = ({
   onReIndexMemoryKeysFromId,
   onPromoteToParentList,
   onSingleListView,
+  onSetAsMemoryList,
   //expandedItemId,
  // setExpandedItemId,
 }) => {
@@ -65,15 +66,16 @@ const DraggableTreeItem = ({
       if (dropOffset && dropOffset.x < -100) {
         // Only reset if the item was dropped well outside (not on another node)
         console.log('Resetting parent_id to null due to leftward drop');
+        alert('resetParentIdOnLeftDrop');
         resetParentIdOnLeftDrop(draggedItem);
       } else {
         console.log("onDropUpdate: draggedItem.id: ", draggedItem.id, " item.id: ", item.id);
-        if(draggedItem.parent_id != null)
-        {
+//        if(draggedItem.parent_id != null)
+ //       {
           onDropUpdate(draggedItem.id, item.id);
-        }else{
-          onShowMessage("You can't drag & drop a parent Memory List.", "info");
-        }
+ //       }else{
+ //         onShowMessage("You can't drag & drop a parent Memory List.", "info");
+ //       }
         
       }
     }
@@ -227,6 +229,9 @@ const checkReIndexParentId = (indexId, parent_id) => {
   </MenuItem>
   <MenuItem onClick={() => { handleClose(); updateStarred(item.id, !item.starred); }}>
     {item.starred ? 'Unstar' : 'Star'}
+  </MenuItem>
+    <MenuItem onClick={() => { handleClose(); onSetAsMemoryList(item.id, item.memory_list_key != null ? false : true); }}>
+    {item.memory_list_key != null ? 'Un Set as Memory List' : 'Set as Memory List'}
   </MenuItem>
   <MenuItem onClick={() => { onConfirmDialogBox(item.id); handleClose(); console.log('Insert 100 Items', item.id); }}>
     Insert 10 Items

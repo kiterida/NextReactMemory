@@ -65,7 +65,7 @@ export default function ListTesterPage() {
     const { data, error } = await supabase
       .from('memory_items')
       .select('id,name')
-      .is('parent_id', null)
+      .not('memory_list_key', 'is', null)
       .ilike('name', `%${trimmed}%`)
       .order('name', { ascending: true })
       .limit(50);

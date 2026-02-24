@@ -419,3 +419,51 @@ export const insertMultipleItems = async (parentId, amountOfItems) => {
     return [];
   };
 
+export const toggleMemoryList = async (id, bSet) => {
+  try {
+    if (!bSet) {
+      const { error } = await supabase
+        .from('memory_items')
+        .update({ memory_list_key: null })
+        .eq('id', id);
+
+      if (error) throw error;
+      return null;
+    }
+
+    const { data: listKeys, error: listKeysError } = await supabase
+      .from('memory_items')
+      .select('memory_list_key')
+      .not('memory_list_key', 'is', null)
+      .order('memory_list_key', { ascending: true });
+
+    if (listKeysError) throw listKeysError;
+
+    let nextAvailableKey = 0;
+    for (const row of listKeys ?? []) {
+      const currentKey = Number(row.memory_list_key);
+      if (!Number.isInteger(currentKey)) continue;
+
+      if (currentKey < nextAvailableKey) continue;
+      if (currentKey === nextAvailableKey) {
+        nextAvailableKey += 1;
+        continue;
+      }
+
+      break;
+    }
+
+    const { error: updateError } = await supabase
+      .from('memory_items')
+      .update({ memory_list_key: nextAvailableKey })
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    return nextAvailableKey;
+  } catch (err) {
+    console.error("Error in toggleMemoryList:", err);
+    return null;
+  }
+};
+
