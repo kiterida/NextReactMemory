@@ -32,6 +32,16 @@ First, run the development server: `npm run dev`
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Cloudflare R2 Image Upload (Quill)
+
+To upload pasted/inserted Quill images to Cloudflare R2, add these values to `.env.local`:
+
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET_NAME`
+- `R2_PUBLIC_BASE_URL` (public base URL for your bucket/domain, without a trailing `/`)
+
 
 ## Deploy on Vercel
 

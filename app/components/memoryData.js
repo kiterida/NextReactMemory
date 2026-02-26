@@ -6,7 +6,7 @@ export const searchMemoryItems = async (searchString) => {
     .from('memory_items')
     .select('*')
     .or(
-      `name.ilike.%${searchString}%,description.ilike.%${searchString}%,code_snippet.ilike.%${searchString}%`
+      `name.ilike.%${searchString}%,description.ilike.%${searchString}%,rich_text.ilike.%${searchString}%,code_snippet.ilike.%${searchString}%`
     );
 
   if (error) {
@@ -246,10 +246,10 @@ export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
 // };
 
 // Update a memory item in Supabase (for the edit form)
-export const updateMemoryItem = async (id, memory_key, name, memory_image, code_snippet, description) => {
+export const updateMemoryItem = async (id, memory_key, name, memory_image, code_snippet, description, rich_text) => {
   const { data, error } = await supabase
     .from('memory_items')
-    .update({ memory_key, name, memory_image, code_snippet, description })
+    .update({ memory_key, name, memory_image, code_snippet, description, rich_text })
     .eq('id', id)
     .select('*')
     .single();
@@ -293,6 +293,7 @@ export const createNewMemoryList = async () => {
         name: 'New Memory List',
         memory_key: highestMemoryKey,  // Use the new memory_key
         memory_image: '',
+        rich_text: '',
       }])
       .select() // 👈 This tells Supabase to return the inserted row
       .single();
@@ -395,6 +396,7 @@ export const insertMultipleItems = async (parentId, amountOfItems) => {
           name: `New Child Item ${i + 1}`,
           memory_key: newMemoryKey + i,  // 👈 incrementing
           memory_image: '',
+          rich_text: '',
           parent_id: parentId,
         }));
 

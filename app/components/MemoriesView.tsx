@@ -35,6 +35,7 @@ type MemoryItem = {
   id: string;
   name?: string;
   description?: string;
+  rich_text?: string;
   parent_id?: string | null;
   code_snippet?: string;
   memory_key?: string;
@@ -46,6 +47,7 @@ export interface MemoryTreeItem {
   id: string;
   name?: string;
   description?: string;
+  rich_text?: string;
   parent_id?: string | null;
   code_snippet?: string;
   memory_key?: string;
@@ -266,7 +268,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!includesTarget) {
       const { data: focusedItem, error: focusedItemError } = await supabase
         .from('memory_items')
-        .select('id, name, description, parent_id, code_snippet, memory_key, memory_image, starred')
+        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, memory_image, starred')
         .eq('id', targetId)
         .single();
 
@@ -297,6 +299,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       if (existing) {
         existing.name = pathNode.name;
         existing.description = pathNode.description;
+        existing.rich_text = pathNode.rich_text;
         existing.parent_id = pathNode.parent_id;
         existing.code_snippet = pathNode.code_snippet;
         existing.memory_key = pathNode.memory_key;
@@ -529,8 +532,8 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const handleSave = async () => {
     if (!selectedItem) return;
 
-    const { id, memory_key, name, memory_image, code_snippet, description } = selectedItem;
-    const updatedItem = await updateMemoryItem(id, memory_key, name, memory_image, code_snippet, description);
+    const { id, memory_key, name, memory_image, code_snippet, description, rich_text } = selectedItem;
+    const updatedItem = await updateMemoryItem(id, memory_key, name, memory_image, code_snippet, description, rich_text);
     if (!updatedItem) return;
 
     setSelectedItem((prev) => (prev && prev.id === id ? { ...prev, ...updatedItem } : prev));
@@ -606,7 +609,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       const { data, error } = await supabase
         .from('memory_items')
-        .select('id, name, description, parent_id, code_snippet, memory_key, memory_image, starred')
+        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, memory_image, starred')
         .eq('id', normalizedTargetId)
         .single();
 
@@ -846,6 +849,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           name: 'New Child Item',
           memory_key: newMemoryKey,  // Use the new memory_key
           memory_image: '',
+          rich_text: '',
           parent_id: parentId,
         }])
         .select() // 👈 This tells Supabase to return the inserted row
