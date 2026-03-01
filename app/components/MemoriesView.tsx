@@ -469,6 +469,46 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     return path; // array of ancestor IDs from root to parent
   }
 
+  function getRootListIdForItem(itemId: string, tree: MemoryTreeItem[]): string | null {
+    const node = findNodeById(tree, itemId);
+    if (!node) {
+      return null;
+    }
+
+    if (node.parent_id === null || node.parent_id === undefined) {
+      return String(node.id);
+    }
+
+    const ancestors = getAllAncestorIds(itemId, tree);
+    if (ancestors.length === 0) {
+      return null;
+    }
+
+    return String(ancestors[0]);
+  }
+
+  useEffect(() => {
+    const listOptions = treeData
+      .filter((item) => item.parent_id === null || item.parent_id === undefined)
+      .map((item) => ({
+        id: String(item.id),
+        name: item.name ?? `List ${item.id}`,
+      }));
+
+    const selectedListId = selectedItem
+      ? getRootListIdForItem(String(selectedItem.id), treeData)
+      : null;
+
+    window.dispatchEvent(
+      new CustomEvent('memory-search-context', {
+        detail: {
+          selectedListId,
+          lists: listOptions,
+        },
+      })
+    );
+  }, [selectedItem, treeData]);
+
   const expandTest = () => {
     console.log("do it");
     if (apiRef.current) {

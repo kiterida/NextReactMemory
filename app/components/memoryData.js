@@ -17,6 +17,109 @@ export const searchMemoryItems = async (searchString) => {
   return data;
 };
 
+const ADVANCED_SEARCH_COLUMNS = ['memory_key', 'name', 'memory_image', 'description', 'rich_text'];
+
+const normalizeSearchValue = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return String(value).toLowerCase();
+};
+
+const getRootListIdForItem = (itemId, parentById, rootCache) => {
+  if (rootCache.has(itemId)) {
+    return rootCache.get(itemId);
+  }
+
+  const visited = new Set();
+  let currentId = itemId;
+  let resolvedRootId = null;
+
+  while (currentId !== null && currentId !== undefined) {
+    const normalizedCurrentId = String(currentId);
+    if (visited.has(normalizedCurrentId)) {
+      resolvedRootId = null;
+      break;
+    }
+
+    visited.add(normalizedCurrentId);
+    const parentId = parentById.get(normalizedCurrentId);
+
+    if (parentId === null || parentId === undefined) {
+      resolvedRootId = normalizedCurrentId;
+      break;
+    }
+
+    currentId = parentId;
+  }
+
+  visited.forEach((id) => {
+    rootCache.set(id, resolvedRootId);
+  });
+
+  return resolvedRootId;
+};
+
+export const searchMemoryItemsAdvanced = async (searchString, options = {}) => {
+  const searchColumns = Array.isArray(options.columns)
+    ? options.columns.filter((column) => ADVANCED_SEARCH_COLUMNS.includes(column))
+    : [];
+
+  if (searchColumns.length === 0) {
+    return [];
+  }
+
+  const term = String(searchString ?? '').trim().toLowerCase();
+  if (term.length < 2) {
+    return [];
+  }
+
+  const selectedListIds = Array.isArray(options.listIds)
+    ? options.listIds.map((id) => String(id))
+    : [];
+  const selectedListSet = new Set(selectedListIds);
+
+  const { data, error } = await supabase
+    .from('memory_items')
+    .select('id, parent_id, memory_key, name, memory_image, description, rich_text')
+    .range(0, 9999);
+
+  if (error) {
+    console.error('Error fetching memory items for advanced search:', error);
+    return [];
+  }
+
+  const rows = data ?? [];
+  const parentById = new Map();
+  for (const row of rows) {
+    parentById.set(String(row.id), row.parent_id === null || row.parent_id === undefined ? null : String(row.parent_id));
+  }
+
+  const rootCache = new Map();
+  const filtered = rows.filter((row) => {
+    if (term.length > 0) {
+      const hasMatch = searchColumns.some((column) => normalizeSearchValue(row[column]).includes(term));
+      if (!hasMatch) {
+        return false;
+      }
+    }
+
+    if (selectedListSet.size === 0) {
+      return true;
+    }
+
+    const rowRootListId = getRootListIdForItem(String(row.id), parentById, rootCache);
+    if (rowRootListId === null) {
+      return false;
+    }
+
+    return selectedListSet.has(String(rowRootListId));
+  });
+
+  return filtered;
+};
+
 export const fetchRootItems = async (singleListViewId = null) => {
   if (singleListViewId !== null && singleListViewId !== undefined && singleListViewId !== '') {
     const listId = Number(singleListViewId);
