@@ -30,6 +30,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import ManageSearchIcon from '@mui/icons-material/ManageSearch';
+import AppTitleWithVersion from '../components/AppTitleWithVersion';
 
 type MemoryItem = {
   id: string;
@@ -336,6 +337,7 @@ export default function Layout(props: { children: React.ReactNode }) {
     <DashboardLayout
       sx={{ height: '100vh', overflow: 'hidden' }}
       slots={{
+        appTitle: AppTitleWithVersion,
         toolbarActions: showSearchToolbar ? ToolbarActionsSearch : undefined,
       }}
     >

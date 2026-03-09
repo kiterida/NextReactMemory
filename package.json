@@ -1,7 +1,10 @@
 {
   "name": "auth-nextjs-themed",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
+    "predev": "node scripts/check-path-case.js",
+    "prebuild": "node scripts/check-path-case.js && node scripts/bump-build-version.js",
+    "prestart": "node scripts/check-path-case.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -4,6 +4,7 @@ import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
+import { R2ImageGalleryDialog } from './R2ImageGalleryButton';
 import 'quill/dist/quill.snow.css';
 
 function CustomTabPanel(props) {
@@ -41,8 +42,11 @@ function a11yProps(index) {
 
 const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
   const [value, setValue] = React.useState(0);
+  const [galleryOpen, setGalleryOpen] = React.useState(false);
   const quillEditorRef = React.useRef(null);
+  const quillToolbarRef = React.useRef(null);
   const quillInstanceRef = React.useRef(null);
+  const savedRangeRef = React.useRef(null);
 
   //console.log('selected item = ', selectedItem);
 
@@ -68,15 +72,32 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
     return payload.url;
   }, []);
 
+  const insertImageAtSelection = React.useCallback((imageUrl) => {
+    const quill = quillInstanceRef.current;
+    if (!quill || !imageUrl) return;
+
+    quill.focus();
+    const range = quill.getSelection(true) || savedRangeRef.current || { index: quill.getLength(), length: 0 };
+
+    if (range.length > 0) {
+      quill.deleteText(range.index, range.length, 'silent');
+    }
+
+    quill.insertEmbed(range.index, 'image', imageUrl, 'user');
+    quill.setSelection(range.index + 1, 0, 'silent');
+    savedRangeRef.current = { index: range.index + 1, length: 0 };
+  }, []);
+
   React.useEffect(() => {
     let isMounted = true;
     let handleTextChange;
+    let handleSelectionChange;
     let handlePaste;
     let handleDrop;
     let handleDragOver;
 
     const initQuill = async () => {
-      if (!quillEditorRef.current || quillInstanceRef.current) return;
+      if (!quillEditorRef.current || !quillToolbarRef.current || quillInstanceRef.current) return;
 
       const { default: Quill } = await import('quill');
       if (!isMounted || !quillEditorRef.current) return;
@@ -84,45 +105,50 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       const quill = new Quill(quillEditorRef.current, {
         theme: 'snow',
         modules: {
-          toolbar: [
-            [{ header: [1, 2, false] }],
-            ['bold', 'italic', 'underline'],
-            [{ list: 'ordered' }, { list: 'bullet' }],
-            ['link', 'image'],
-            ['clean'],
-          ],
+          toolbar: {
+            container: quillToolbarRef.current,
+            handlers: {
+              image: () => {
+                const input = document.createElement('input');
+                input.setAttribute('type', 'file');
+                input.setAttribute('accept', 'image/*');
+                input.onchange = () => {
+                  const file = input.files?.[0];
+                  if (file) {
+                    void insertImageFromFile(file);
+                  }
+                };
+                input.click();
+              },
+              r2image: () => {
+                savedRangeRef.current = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+                setGalleryOpen(true);
+              },
+            },
+          },
         },
       });
 
       const insertImageFromFile = async (file) => {
         if (!file || !file.type || !file.type.startsWith('image/')) return;
-        const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+        savedRangeRef.current = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
 
         try {
           const imageUrl = await uploadImageToR2(file);
-          quill.insertEmbed(range.index, 'image', imageUrl, 'user');
-          quill.setSelection(range.index + 1, 0, 'silent');
+          insertImageAtSelection(imageUrl);
         } catch (error) {
           console.error('Image upload failed:', error);
         }
       };
 
-      const toolbar = quill.getModule('toolbar');
-      toolbar?.addHandler('image', () => {
-        const input = document.createElement('input');
-        input.setAttribute('type', 'file');
-        input.setAttribute('accept', 'image/*');
-        input.onchange = () => {
-          const file = input.files?.[0];
-          if (file) {
-            void insertImageFromFile(file);
-          }
-        };
-        input.click();
-      });
-
       handleTextChange = () => {
         setSelectedItem((prev) => ({ ...prev, rich_text: quill.root.innerHTML }));
+      };
+
+      handleSelectionChange = (range) => {
+        if (range) {
+          savedRangeRef.current = range;
+        }
       };
 
       handlePaste = (event) => {
@@ -157,9 +183,10 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       };
 
       quill.on('text-change', handleTextChange);
-      quill.root.addEventListener('paste', handlePaste);
-      quill.root.addEventListener('dragover', handleDragOver);
-      quill.root.addEventListener('drop', handleDrop);
+      quill.on('selection-change', handleSelectionChange);
+      quill.root.addEventListener('paste', handlePaste, true);
+      quill.root.addEventListener('dragover', handleDragOver, true);
+      quill.root.addEventListener('drop', handleDrop, true);
       quillInstanceRef.current = quill;
     };
 
@@ -170,18 +197,21 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       if (quillInstanceRef.current && handleTextChange) {
         quillInstanceRef.current.off('text-change', handleTextChange);
       }
+      if (quillInstanceRef.current && handleSelectionChange) {
+        quillInstanceRef.current.off('selection-change', handleSelectionChange);
+      }
       if (quillInstanceRef.current?.root && handlePaste) {
-        quillInstanceRef.current.root.removeEventListener('paste', handlePaste);
+        quillInstanceRef.current.root.removeEventListener('paste', handlePaste, true);
       }
       if (quillInstanceRef.current?.root && handleDragOver) {
-        quillInstanceRef.current.root.removeEventListener('dragover', handleDragOver);
+        quillInstanceRef.current.root.removeEventListener('dragover', handleDragOver, true);
       }
       if (quillInstanceRef.current?.root && handleDrop) {
-        quillInstanceRef.current.root.removeEventListener('drop', handleDrop);
+        quillInstanceRef.current.root.removeEventListener('drop', handleDrop, true);
       }
       quillInstanceRef.current = null;
     };
-  }, [setSelectedItem, uploadImageToR2]);
+  }, [insertImageAtSelection, setSelectedItem, uploadImageToR2]);
 
   React.useEffect(() => {
     const quill = quillInstanceRef.current;
@@ -274,7 +304,50 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       </CustomTabPanel>
 
       <CustomTabPanel value={value} index={4}>
+        <Box
+          className="ql-toolbar ql-snow"
+          ref={quillToolbarRef}
+          sx={{
+            border: '1px solid',
+            borderColor: 'divider',
+            borderBottom: 0,
+            borderTopLeftRadius: 4,
+            borderTopRightRadius: 4,
+          }}
+        >
+          <span className="ql-formats">
+            <select className="ql-header" defaultValue="">
+              <option value="1">Heading</option>
+              <option value="2">Subheading</option>
+              <option value="">Normal</option>
+            </select>
+          </span>
+          <span className="ql-formats">
+            <button type="button" className="ql-bold" aria-label="Bold" />
+            <button type="button" className="ql-italic" aria-label="Italic" />
+            <button type="button" className="ql-underline" aria-label="Underline" />
+          </span>
+          <span className="ql-formats">
+            <button type="button" className="ql-list" value="ordered" aria-label="Ordered list" />
+            <button type="button" className="ql-list" value="bullet" aria-label="Bullet list" />
+          </span>
+          <span className="ql-formats">
+            <button type="button" className="ql-link" aria-label="Insert link" />
+            <button type="button" className="ql-image" aria-label="Upload image" />
+            <button type="button" className="ql-r2image" aria-label="Insert from R2" title="Insert from R2">
+              R2
+            </button>
+          </span>
+          <span className="ql-formats">
+            <button type="button" className="ql-clean" aria-label="Clear formatting" />
+          </span>
+        </Box>
         <Box ref={quillEditorRef} />
+        <R2ImageGalleryDialog
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+          onSelectImage={insertImageAtSelection}
+        />
       </CustomTabPanel>
     </Box>
   );

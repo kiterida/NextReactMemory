@@ -3,6 +3,7 @@ import Typography from '@mui/material/Typography';
 import { auth } from '../../auth';
 import TodoListWidget from '../components/widgets/ToDoListWidget';
 import Box from '@mui/material/Box';
+import R2ImageGalleryButton from '../components/R2ImageGalleryButton';
 
 export default async function HomePage() {
   const session = await auth();
@@ -12,6 +13,9 @@ export default async function HomePage() {
       <Typography>
         Welcome to your Memory Core, {session?.user?.name || 'User'}!
       </Typography>
+      <Box sx={{ mt: 2 }}>
+        <R2ImageGalleryButton />
+      </Box>
       <div>Todo</div>
       <div>I want a todo list here</div>
       <div>Need an add button on this page that allows you to add widgets to the dashboardd like &lsquo;To Do List&lsquo;, &lsquo;Current Memory List&lsquo;, &lsquo;Current Project&lsquo;. etc</div>
