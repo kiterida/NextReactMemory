@@ -3,7 +3,11 @@ import PropTypes from 'prop-types';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import CircularProgress from '@mui/material/CircularProgress';
+import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { R2ImageGalleryDialog } from './R2ImageGalleryButton';
 import 'quill/dist/quill.snow.css';
 
@@ -43,10 +47,14 @@ function a11yProps(index) {
 const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
   const [value, setValue] = React.useState(0);
   const [galleryOpen, setGalleryOpen] = React.useState(false);
+  const [headerGalleryOpen, setHeaderGalleryOpen] = React.useState(false);
+  const [headerImageUploading, setHeaderImageUploading] = React.useState(false);
+  const [isHeaderDragActive, setIsHeaderDragActive] = React.useState(false);
   const quillEditorRef = React.useRef(null);
   const quillToolbarRef = React.useRef(null);
   const quillInstanceRef = React.useRef(null);
   const savedRangeRef = React.useRef(null);
+  const headerImageInputRef = React.useRef(null);
 
   //console.log('selected item = ', selectedItem);
 
@@ -71,6 +79,26 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
     const payload = await response.json();
     return payload.url;
   }, []);
+
+  const applyHeaderImage = React.useCallback((imageUrl) => {
+    setSelectedItem((prev) => ({ ...prev, header_image: imageUrl }));
+  }, [setSelectedItem]);
+
+  const uploadHeaderImageFile = React.useCallback(async (file) => {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+      return;
+    }
+
+    setHeaderImageUploading(true);
+    try {
+      const imageUrl = await uploadImageToR2(file);
+      applyHeaderImage(imageUrl);
+    } catch (error) {
+      console.error('Header image upload failed:', error);
+    } finally {
+      setHeaderImageUploading(false);
+    }
+  }, [applyHeaderImage, uploadImageToR2]);
 
   const insertImageAtSelection = React.useCallback((imageUrl) => {
     const quill = quillInstanceRef.current;
@@ -230,7 +258,7 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
           <Tab label="Item" {...a11yProps(0)} />
           <Tab label="Description" {...a11yProps(1)} />
           <Tab label="Code Snippet" {...a11yProps(2)} />
-          <Tab label="Image (link)" {...a11yProps(3)} />
+          <Tab label="Header Image" {...a11yProps(3)} />
           <Tab label="React-Quill" {...a11yProps(4)} />
         </Tabs>
       </Box>
@@ -294,13 +322,104 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       </CustomTabPanel>
 
       <CustomTabPanel value={value} index={3}>
-        <TextField
-          label="Image URL"
-          value={selectedItem.memory_image || ''}
-          onChange={(e) => setSelectedItem({ ...selectedItem, memory_image: e.target.value })}
-          fullWidth
-          margin="normal"
-        />
+        <Stack spacing={2}>
+          {selectedItem.header_image ? (
+            <Box
+              component="img"
+              src={selectedItem.header_image}
+              alt={selectedItem.name || 'Header image'}
+              sx={{
+                width: '100%',
+                maxHeight: 280,
+                objectFit: 'cover',
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                backgroundColor: 'grey.100',
+              }}
+            />
+          ) : null}
+
+          <Box
+            onDragOver={(event) => {
+              if (event.dataTransfer?.files?.length) {
+                event.preventDefault();
+                setIsHeaderDragActive(true);
+              }
+            }}
+            onDragLeave={() => setIsHeaderDragActive(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsHeaderDragActive(false);
+
+              const files = event.dataTransfer?.files;
+              if (!files || !files.length) return;
+
+              const imageFile = Array.from(files).find((file) => file.type.startsWith('image/'));
+              if (!imageFile) return;
+
+              void uploadHeaderImageFile(imageFile);
+            }}
+            sx={{
+              minHeight: 220,
+              border: '2px dashed',
+              borderColor: isHeaderDragActive ? 'primary.main' : 'divider',
+              borderRadius: 3,
+              bgcolor: isHeaderDragActive ? 'action.hover' : 'background.default',
+              transition: 'border-color 160ms ease, background-color 160ms ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 3,
+              textAlign: 'center',
+            }}
+          >
+            <Stack spacing={2} alignItems="center">
+              {headerImageUploading ? <CircularProgress size={28} /> : null}
+              <Typography variant="body1">
+                Drag in an image from your computer or upload
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button
+                  variant="contained"
+                  onClick={() => headerImageInputRef.current?.click()}
+                  disabled={headerImageUploading}
+                >
+                  Upload Image
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setHeaderGalleryOpen(true)}
+                  disabled={headerImageUploading}
+                >
+                  Choose From R2
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+
+          <input
+            ref={headerImageInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                void uploadHeaderImageFile(file);
+              }
+              event.target.value = '';
+            }}
+          />
+
+          <TextField
+            label="Header Image URL"
+            value={selectedItem.header_image || ''}
+            onChange={(e) => setSelectedItem({ ...selectedItem, header_image: e.target.value })}
+            fullWidth
+            margin="normal"
+          />
+        </Stack>
       </CustomTabPanel>
 
       <CustomTabPanel value={value} index={4}>
@@ -349,6 +468,12 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
           onSelectImage={insertImageAtSelection}
         />
       </CustomTabPanel>
+
+      <R2ImageGalleryDialog
+        open={headerGalleryOpen}
+        onClose={() => setHeaderGalleryOpen(false)}
+        onSelectImage={applyHeaderImage}
+      />
     </Box>
   );
 };

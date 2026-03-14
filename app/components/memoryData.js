@@ -17,7 +17,7 @@ export const searchMemoryItems = async (searchString) => {
   return data;
 };
 
-const ADVANCED_SEARCH_COLUMNS = ['memory_key', 'name', 'memory_image', 'description', 'rich_text'];
+const ADVANCED_SEARCH_COLUMNS = ['memory_key', 'name', 'memory_image', 'header_image', 'description', 'rich_text'];
 
 const normalizeSearchValue = (value) => {
   if (value === null || value === undefined) {
@@ -82,7 +82,7 @@ export const searchMemoryItemsAdvanced = async (searchString, options = {}) => {
 
   const { data, error } = await supabase
     .from('memory_items')
-    .select('id, parent_id, memory_key, name, memory_image, description, rich_text')
+    .select('id, parent_id, memory_key, name, memory_image, header_image, description, rich_text')
     .range(0, 9999);
 
   if (error) {
@@ -349,10 +349,10 @@ export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
 // };
 
 // Update a memory item in Supabase (for the edit form)
-export const updateMemoryItem = async (id, memory_key, name, memory_image, code_snippet, description, rich_text) => {
+export const updateMemoryItem = async (id, memory_key, name, memory_image, header_image, code_snippet, description, rich_text) => {
   const { data, error } = await supabase
     .from('memory_items')
-    .update({ memory_key, name, memory_image, code_snippet, description, rich_text })
+    .update({ memory_key, name, memory_image, header_image, code_snippet, description, rich_text })
     .eq('id', id)
     .select('*')
     .single();
@@ -396,6 +396,7 @@ export const createNewMemoryList = async () => {
         name: 'New Memory List',
         memory_key: highestMemoryKey,  // Use the new memory_key
         memory_image: '',
+        header_image: '',
         rich_text: '',
       }])
       .select() // 👈 This tells Supabase to return the inserted row
@@ -499,6 +500,7 @@ export const insertMultipleItems = async (parentId, amountOfItems) => {
           name: `New Child Item ${i + 1}`,
           memory_key: newMemoryKey + i,  // 👈 incrementing
           memory_image: '',
+          header_image: '',
           rich_text: '',
           parent_id: parentId,
         }));

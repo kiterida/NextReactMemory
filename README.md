@@ -33,6 +33,15 @@ Implementation steps:
 6. The dashboard will fetch rows from `memory_core_widgets` and render them through `widgetRegistry.js`.
 7. To add a future widget type, register it in `widgetRegistry.js`, create a widget component, and add its config fields to `WidgetConfigDialog.js`.
 
+Memory item SQL helpers:
+
+- If you add columns like `memory_items.header_image`, also update the Supabase helper objects used by the tree UI.
+- A replacement SQL script is in `data/memory_items_objects.sql` for:
+  - `memory_tree_with_starred`
+  - `get_root_memory_items()`
+  - `get_children(p_parent_id)`
+  - `get_children_with_path(p_focus_id)`
+
 # How to update to github
 
 First build the project

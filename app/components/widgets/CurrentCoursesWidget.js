@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -68,23 +69,51 @@ export default function CurrentCoursesWidget({ widget }) {
           ) : null}
 
           {!loading && !error && memoryItem ? (
-            <Stack spacing={1}>
-              <MuiLink
-                component={Link}
-                href={`/singleListView?listId=${memoryItem.id}`}
-                underline="hover"
-                sx={{ width: 'fit-content', fontWeight: 500 }}
-              >
-                {memoryItem.name || 'Untitled memory item'}
-              </MuiLink>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: memoryItem.header_image ? '1fr 200px' : '1fr' },
+                gap: 2,
+                alignItems: 'start',
+              }}
+            >
+              <Stack spacing={1}>
+                <MuiLink
+                  component={Link}
+                  href={`/singleListView?listId=${memoryItem.id}`}
+                  underline="hover"
+                  sx={{ width: 'fit-content', fontWeight: 500 }}
+                >
+                  {memoryItem.name || 'Untitled memory item'}
+                </MuiLink>
 
-              <Typography variant="subtitle2" color="text.secondary">
-                Description
-              </Typography>
-              <Typography color="text.secondary">
-                {memoryItem.description || 'No description yet.'}
-              </Typography>
-            </Stack>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Description
+                </Typography>
+                <Typography color="text.secondary">
+                  {memoryItem.description || 'No description yet.'}
+                </Typography>
+              </Stack>
+
+              {memoryItem.header_image ? (
+                <Box
+                  component="img"
+                  src={memoryItem.header_image}
+                  alt={memoryItem.name || 'Header image'}
+                  sx={{
+                    width: '100%',
+                    maxWidth: 200,
+                    height: 120,
+                    objectFit: 'cover',
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    justifySelf: { xs: 'start', sm: 'end' },
+                    backgroundColor: 'grey.100',
+                  }}
+                />
+              ) : null}
+            </Box>
           ) : null}
         </Stack>
       </CardContent>

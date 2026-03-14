@@ -40,6 +40,7 @@ type MemoryItem = {
   code_snippet?: string;
   memory_key?: string;
   memory_image?: string;
+  header_image?: string;
   starred?: boolean;
 };
 
@@ -52,6 +53,7 @@ export interface MemoryTreeItem {
   code_snippet?: string;
   memory_key?: string;
   memory_image?: string;
+  header_image?: string;
   starred?: boolean;
   has_children?: boolean;   
   child_count?: number;
@@ -268,7 +270,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!includesTarget) {
       const { data: focusedItem, error: focusedItemError } = await supabase
         .from('memory_items')
-        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, memory_image, starred')
+        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, memory_image, header_image, starred')
         .eq('id', targetId)
         .single();
 
@@ -304,6 +306,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         existing.code_snippet = pathNode.code_snippet;
         existing.memory_key = pathNode.memory_key;
         existing.memory_image = pathNode.memory_image;
+        existing.header_image = pathNode.header_image;
         existing.starred = pathNode.starred;
         existing.has_children = pathNode.has_children;
         existing.child_count = pathNode.child_count;
@@ -572,8 +575,8 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const handleSave = async () => {
     if (!selectedItem) return;
 
-    const { id, memory_key, name, memory_image, code_snippet, description, rich_text } = selectedItem;
-    const updatedItem = await updateMemoryItem(id, memory_key, name, memory_image, code_snippet, description, rich_text);
+    const { id, memory_key, name, memory_image, header_image, code_snippet, description, rich_text } = selectedItem;
+    const updatedItem = await updateMemoryItem(id, memory_key, name, memory_image, header_image, code_snippet, description, rich_text);
     if (!updatedItem) return;
 
     setSelectedItem((prev) => (prev && prev.id === id ? { ...prev, ...updatedItem } : prev));
@@ -649,7 +652,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       const { data, error } = await supabase
         .from('memory_items')
-        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, memory_image, starred')
+        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, memory_image, header_image, starred')
         .eq('id', normalizedTargetId)
         .single();
 
@@ -889,6 +892,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           name: 'New Child Item',
           memory_key: newMemoryKey,  // Use the new memory_key
           memory_image: '',
+          header_image: '',
           rich_text: '',
           parent_id: parentId,
         }])

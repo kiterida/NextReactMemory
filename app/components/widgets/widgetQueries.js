@@ -133,7 +133,7 @@ export async function fetchMemoryItemById(memoryItemId) {
 
   const { data, error } = await supabase
     .from('memory_items')
-    .select('id, name, memory_key, description, rich_text')
+    .select('id, name, memory_key, header_image, description, rich_text')
     .eq('id', memoryItemId)
     .maybeSingle();
 
