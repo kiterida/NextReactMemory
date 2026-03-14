@@ -1,33 +1,25 @@
 import * as React from 'react';
 import Typography from '@mui/material/Typography';
-import { auth } from '../../auth';
-import TodoListWidget from '../components/widgets/ToDoListWidget';
 import Box from '@mui/material/Box';
+import { auth } from '../../auth';
 import R2ImageGalleryButton from '../components/R2ImageGalleryButton';
+import DashboardWidgets from '../components/widgets/DashboardWidgets';
 
 export default async function HomePage() {
   const session = await auth();
+  const userId = session?.user?.email || session?.user?.name || null;
 
-  return (    
-    <>
-      <Typography>
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" sx={{ mb: 1 }}>
         Welcome to your Memory Core, {session?.user?.name || 'User'}!
       </Typography>
-      <Box sx={{ mt: 2 }}>
+
+      <Box sx={{ mb: 3 }}>
         <R2ImageGalleryButton />
       </Box>
-      <div>Todo</div>
-      <div>I want a todo list here</div>
-      <div>Need an add button on this page that allows you to add widgets to the dashboardd like &lsquo;To Do List&lsquo;, &lsquo;Current Memory List&lsquo;, &lsquo;Current Project&lsquo;. etc</div>
-      <Box sx={{ p: 2, mt:2, width: '100%', backgroundColor: 'grey'}}>
-        <Box>
-          <Typography>Create new table for app settings, widgets, etc..</Typography>
-          <Typography>Query for included widgets</Typography>
-          <Typography>Map widgets onto dashboard</Typography>
-          <Typography>Create ability to add and delete widgets</Typography>
-        </Box>
-        <TodoListWidget />
-      </Box>
-      </>
+
+      <DashboardWidgets userId={userId} dashboardId="main" />
+    </Box>
   );
 }

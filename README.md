@@ -2,6 +2,37 @@
 
 Run `npm run dev` to work on the project.
 
+## Dashboard widget system
+
+Suggested file structure for the widget system:
+
+```text
+app/
+  (dashboard)/
+    page.tsx
+  components/
+    widgets/
+      CurrentCoursesWidget.js
+      DashboardWidgets.js
+      HistoryWidget.js
+      WidgetConfigDialog.js
+      WidgetPickerDialog.js
+      widgetQueries.js
+      widgetRegistry.js
+data/
+  memory_core_widgets.sql
+```
+
+Implementation steps:
+
+1. Run the SQL in `data/memory_core_widgets.sql` in Supabase.
+2. Confirm `user_id` should store the same identifier used by your app session. The current implementation uses the signed-in user email because this app uses NextAuth rather than Supabase Auth.
+3. If Supabase reports `new row violates row-level security policy`, re-run the latest `data/memory_core_widgets.sql`. It now includes permissive RLS policies for the current NextAuth + browser anon-key setup.
+4. Open the dashboard page and click `Add Widget`.
+5. Pick a widget type, fill in its config, and save it.
+6. The dashboard will fetch rows from `memory_core_widgets` and render them through `widgetRegistry.js`.
+7. To add a future widget type, register it in `widgetRegistry.js`, create a widget component, and add its config fields to `WidgetConfigDialog.js`.
+
 # How to update to github
 
 First build the project
