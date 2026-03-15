@@ -1,5 +1,6 @@
 import CurrentCoursesWidget from './CurrentCoursesWidget';
 import HistoryWidget from './HistoryWidget';
+import ToDoListWidget from './ToDoListWidget';
 
 export const widgetRegistry = {
   current_courses: {
@@ -24,6 +25,18 @@ export const widgetRegistry = {
     },
     defaultConfig: {
       maxItems: 5,
+    },
+  },
+  todo_list: {
+    label: 'To Do List',
+    component: ToDoListWidget,
+    defaultTitle: 'To Do List',
+    defaultSize: {
+      width: 6,
+      height: 2,
+    },
+    defaultConfig: {
+      todo_list_id: '',
     },
   },
 };

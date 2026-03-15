@@ -1,0 +1,91 @@
+I want to add widget reordering and collapse functionality to the dashboard page of my existing React + Supabase + Material UI app.
+
+Context:
+- I already have a dashboard page that displays widgets from the `memory_core_widgets` table
+- I already have widget functionality in progress
+- Widgets are rendered on the dashboard page
+- I want users to be able to drag widgets to rearrange their display order
+- I also want users to be able to collapse a widget so that only the widget name is visible
+
+Requirements:
+
+1. Database changes
+- Update the `memory_core_widgets` table to support widget ordering
+- Add a new field:
+  - `display_order integer not null default 0`
+- Generate SQL for altering the existing table
+- If needed, also include a backfill SQL statement that sets `display_order = id` for existing rows or assigns a stable initial order
+- Put the SQL in a new file in my project:
+  - `supabase/sql/alter_memory_core_widgets_add_display_order.sql`
+
+2. Dashboard widget reordering
+- On the dashboard page, users must be able to drag and drop widgets to reorder them visually
+- After drag-and-drop, the new order must be saved to Supabase by updating `display_order`
+- Widgets should always load sorted by `display_order asc`
+- Reordering should persist after page refresh
+
+3. Collapse / expand widget
+- Add a new button to each widget’s floating button section
+- This button should toggle the widget between expanded and collapsed
+- When collapsed:
+  - only the widget name/title should be visible
+  - the main widget content should be hidden
+- When expanded:
+  - the full widget content should be shown
+- The collapsed state should persist in the database
+- Add a new database field if needed for this, such as:
+  - `is_collapsed boolean not null default false`
+- If this field is needed, include it in the same SQL file
+
+4. UI requirements
+- Use Material UI styling
+- Keep the current dashboard/widget style consistent
+- The collapse button should fit into the existing widget floating button area
+- Use a clear expand/collapse icon
+- The collapsed widget should still look neat and clickable
+- The widget title should remain visible when collapsed
+
+5. Code requirements
+- Use JavaScript, not TypeScript
+- Keep the code modular
+- Add comments where helpful
+- Use my existing Supabase client/helpers style if possible
+
+Implementation tasks:
+1. Create the SQL file:
+   - `supabase/sql/alter_memory_core_widgets_add_display_order.sql`
+2. Include SQL to:
+   - add `display_order`
+   - add `is_collapsed` if needed
+   - backfill existing rows
+3. Update the dashboard widget query so widgets load ordered by `display_order`
+4. Add drag-and-drop support for widgets on the dashboard
+5. Add helper logic to persist the reordered widget positions
+6. Add collapse/expand toggle support
+7. Persist collapsed state changes to Supabase
+8. Update the widget UI so collapsed widgets show only the widget title
+9. Keep all existing widget functionality working
+
+Please generate:
+1. The SQL file contents
+2. Suggested file changes
+3. Updated dashboard component code
+4. Any new helper functions needed for:
+   - loading widgets in order
+   - updating widget order
+   - toggling collapsed state
+5. Example widget card/component changes for collapsed rendering
+6. Clear step-by-step explanation of what changed
+
+Recommended implementation details:
+- Use `display_order` to control widget order
+- Use `is_collapsed` to control collapsed state
+- Query widgets with:
+  - `.order('display_order', { ascending: true })`
+- For drag-and-drop, update all affected widgets after reorder
+- Collapsed widgets should render only the widget title/header area, not the content body
+
+Important:
+- Do not remove existing widget functionality
+- Extend the existing dashboard implementation
+- If the project already has a widget wrapper/card component, update that component instead of duplicating logic

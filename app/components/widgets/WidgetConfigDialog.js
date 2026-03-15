@@ -11,6 +11,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
+import TodoListConfigDialog from './TodoListConfigDialog';
 import { fetchMemoryItemOptions } from './widgetQueries';
 import { getWidgetDefinition } from './widgetRegistry';
 
@@ -97,6 +98,17 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
 
   if (!definition) {
     return null;
+  }
+
+  if (widgetType === 'todo_list') {
+    return (
+      <TodoListConfigDialog
+        open={open}
+        initialValues={initialValues}
+        onClose={onClose}
+        onSave={onSave}
+      />
+    );
   }
 
   const handleConfigChange = (field, value) => {

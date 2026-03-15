@@ -13,7 +13,9 @@ const WIDGET_COLUMNS = `
   width,
   height,
   sort_order,
+  display_order,
   is_visible,
+  is_collapsed,
   config
 `;
 
@@ -23,7 +25,7 @@ export async function fetchDashboardWidgets({ userId, dashboardId }) {
     .select(WIDGET_COLUMNS)
     .eq('dashboard_id', dashboardId)
     .eq('is_visible', true)
-    .order('sort_order', { ascending: true })
+    .order('display_order', { ascending: true })
     .order('created_at', { ascending: true });
 
   if (userId) {
@@ -51,7 +53,9 @@ export async function createDashboardWidget(widgetInput) {
     width: widgetInput.width ?? 6,
     height: widgetInput.height ?? 1,
     sort_order: widgetInput.sortOrder ?? 0,
+    display_order: widgetInput.displayOrder ?? widgetInput.sortOrder ?? 0,
     is_visible: widgetInput.isVisible ?? true,
+    is_collapsed: widgetInput.isCollapsed ?? false,
     config: widgetInput.config ?? {},
   };
 
@@ -102,6 +106,45 @@ export async function deleteDashboardWidget(widgetId) {
     console.error('Error deleting dashboard widget:', error);
     throw error;
   }
+}
+
+export async function updateDashboardWidgetOrder(widgets) {
+  const results = await Promise.all(
+    widgets.map((widget, index) =>
+      supabase
+        .from('memory_core_widgets')
+        .update({ display_order: index })
+        .eq('id', widget.id)
+    )
+  );
+
+  const failedResult = results.find((result) => result.error);
+
+  if (failedResult?.error) {
+    console.error('Error updating dashboard widget order:', failedResult.error);
+    throw failedResult.error;
+  }
+
+  return widgets.map((widget, index) => ({
+    ...widget,
+    display_order: index,
+  }));
+}
+
+export async function updateDashboardWidgetCollapsed(widgetId, isCollapsed) {
+  const { data, error } = await supabase
+    .from('memory_core_widgets')
+    .update({ is_collapsed: isCollapsed })
+    .eq('id', widgetId)
+    .select(WIDGET_COLUMNS)
+    .single();
+
+  if (error) {
+    console.error('Error updating dashboard widget collapse state:', error);
+    throw error;
+  }
+
+  return data;
 }
 
 export async function fetchMemoryItemOptions(searchTerm = '') {

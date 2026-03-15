@@ -88,11 +88,6 @@ const NAVIGATION: Navigation = [
     pattern: 'employees{/:employeeId}*',
   },
   {
-    segment: 'testPage',
-    title: 'Test Page',
-    icon: <PersonIcon />,
-  },
-  {
     segment:'sample',
     title: 'Sample Dashboard',
   }

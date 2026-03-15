@@ -9,31 +9,56 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import WidgetCardShell from './WidgetCardShell';
 import WidgetConfigDialog from './WidgetConfigDialog';
 import WidgetPickerDialog from './WidgetPickerDialog';
+import { assignDisplayOrder, getNextDisplayOrder, moveWidgetInList } from './widgetLayoutUtils';
 import {
   createDashboardWidget,
   deleteDashboardWidget,
   fetchDashboardWidgets,
   updateDashboardWidget,
+  updateDashboardWidgetCollapsed,
+  updateDashboardWidgetOrder,
 } from './widgetQueries';
 import { getWidgetDefinition } from './widgetRegistry';
 
-function WidgetRenderer({ widget, onEdit, onDelete }) {
+function WidgetRenderer({
+  widget,
+  isDragging,
+  isDragOver,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  onEdit,
+  onDelete,
+  onToggleCollapse,
+}) {
   const definition = getWidgetDefinition(widget.widget_type);
 
   if (!definition) {
-    return (
-      <Alert severity="warning">
-        Unknown widget type: {widget.widget_type}
-      </Alert>
-    );
+    return <Alert severity="warning">Unknown widget type: {widget.widget_type}</Alert>;
   }
 
   const WidgetComponent = definition.component;
+
   return (
-    <WidgetCardShell onEdit={onEdit} onDelete={onDelete}>
+    <WidgetCardShell
+      title={widget.title}
+      isCollapsed={Boolean(widget.is_collapsed)}
+      isDragging={isDragging}
+      isDragOver={isDragOver}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      onToggleCollapse={onToggleCollapse}
+    >
       <WidgetComponent widget={widget} />
     </WidgetCardShell>
   );
@@ -47,6 +72,16 @@ export default function DashboardWidgets({ userId, dashboardId }) {
   const [configOpen, setConfigOpen] = React.useState(false);
   const [selectedWidgetType, setSelectedWidgetType] = React.useState('');
   const [editingWidget, setEditingWidget] = React.useState(null);
+  const [draggingWidgetId, setDraggingWidgetId] = React.useState(null);
+  const [dragOverWidgetId, setDragOverWidgetId] = React.useState(null);
+  const widgetsRef = React.useRef([]);
+  const dragSnapshotRef = React.useRef([]);
+  const draggedWidgetIdRef = React.useRef(null);
+  const hasPendingReorderRef = React.useRef(false);
+
+  React.useEffect(() => {
+    widgetsRef.current = widgets;
+  }, [widgets]);
 
   const loadWidgets = React.useCallback(async () => {
     setLoading(true);
@@ -66,6 +101,24 @@ export default function DashboardWidgets({ userId, dashboardId }) {
     loadWidgets();
   }, [loadWidgets]);
 
+  const persistWidgetOrder = React.useCallback(async () => {
+    const orderedWidgets = assignDisplayOrder(widgetsRef.current);
+    setWidgets(orderedWidgets);
+
+    try {
+      const savedWidgets = await updateDashboardWidgetOrder(orderedWidgets);
+      setWidgets(savedWidgets);
+    } catch (reorderError) {
+      setWidgets(dragSnapshotRef.current);
+      setError(reorderError.message || 'Unable to save the new widget order.');
+    } finally {
+      draggedWidgetIdRef.current = null;
+      hasPendingReorderRef.current = false;
+      setDraggingWidgetId(null);
+      setDragOverWidgetId(null);
+    }
+  }, []);
+
   const handleWidgetTypeSelect = (widgetType) => {
     setSelectedWidgetType(widgetType);
     setEditingWidget(null);
@@ -77,12 +130,8 @@ export default function DashboardWidgets({ userId, dashboardId }) {
     if (editingWidget) {
       const updatedWidget = await updateDashboardWidget(editingWidget.id, widgetValues);
 
-      setWidgets((prev) =>
-        prev.map((widget) => (widget.id === updatedWidget.id ? updatedWidget : widget))
-      );
+      setWidgets((prev) => prev.map((widget) => (widget.id === updatedWidget.id ? updatedWidget : widget)));
     } else {
-      const currentWidgetCount = widgets.length;
-
       const createdWidget = await createDashboardWidget({
         userId,
         dashboardId,
@@ -90,7 +139,8 @@ export default function DashboardWidgets({ userId, dashboardId }) {
         title: widgetValues.title,
         width: widgetValues.width,
         height: widgetValues.height,
-        sortOrder: currentWidgetCount,
+        sortOrder: widgets.length,
+        displayOrder: getNextDisplayOrder(widgets),
         config: widgetValues.config,
       });
 
@@ -122,8 +172,78 @@ export default function DashboardWidgets({ userId, dashboardId }) {
     }
   };
 
+  const handleToggleCollapse = async (widget) => {
+    const nextCollapsed = !widget.is_collapsed;
+
+    setWidgets((prev) =>
+      prev.map((entry) => (entry.id === widget.id ? { ...entry, is_collapsed: nextCollapsed } : entry))
+    );
+
+    try {
+      const updatedWidget = await updateDashboardWidgetCollapsed(widget.id, nextCollapsed);
+      setWidgets((prev) => prev.map((entry) => (entry.id === widget.id ? updatedWidget : entry)));
+    } catch (collapseError) {
+      setWidgets((prev) =>
+        prev.map((entry) => (entry.id === widget.id ? { ...entry, is_collapsed: widget.is_collapsed } : entry))
+      );
+      setError(collapseError.message || 'Unable to update widget collapse state.');
+    }
+  };
+
+  const handleWidgetDragStart = (event, widgetId) => {
+    if (event?.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(widgetId));
+    }
+
+    draggedWidgetIdRef.current = widgetId;
+    dragSnapshotRef.current = widgetsRef.current;
+    hasPendingReorderRef.current = false;
+    setDraggingWidgetId(widgetId);
+    setDragOverWidgetId(widgetId);
+  };
+
+  const handleWidgetDragOver = (event, targetWidgetId) => {
+    event.preventDefault();
+
+    const draggedWidgetId = draggedWidgetIdRef.current;
+    if (!draggedWidgetId || draggedWidgetId === targetWidgetId) {
+      return;
+    }
+
+    setDragOverWidgetId(targetWidgetId);
+
+    setWidgets((prev) => {
+      const nextWidgets = moveWidgetInList(prev, draggedWidgetId, targetWidgetId);
+
+      if (nextWidgets === prev) {
+        return prev;
+      }
+
+      hasPendingReorderRef.current = true;
+      return nextWidgets;
+    });
+  };
+
+  const handleWidgetDrop = (event, targetWidgetId) => {
+    event.preventDefault();
+    setDragOverWidgetId(targetWidgetId);
+  };
+
+  const handleWidgetDragEnd = async () => {
+    if (!hasPendingReorderRef.current) {
+      draggedWidgetIdRef.current = null;
+      setDraggingWidgetId(null);
+      setDragOverWidgetId(null);
+      return;
+    }
+
+    await persistWidgetOrder();
+  };
+
   return (
-    <Stack spacing={2}>
+    <DndProvider backend={HTML5Backend}>
+      <Stack spacing={2}>
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
         <Box>
           <Typography variant="h6">Dashboard Widgets</Typography>
@@ -154,8 +274,15 @@ export default function DashboardWidgets({ userId, dashboardId }) {
           <Grid key={widget.id} size={{ xs: 12, md: widget.width || 6 }}>
             <WidgetRenderer
               widget={widget}
+              isDragging={draggingWidgetId === widget.id}
+              isDragOver={dragOverWidgetId === widget.id && draggingWidgetId !== widget.id}
+              onDragStart={(event) => handleWidgetDragStart(event, widget.id)}
+              onDragEnd={handleWidgetDragEnd}
+              onDragOver={(event) => handleWidgetDragOver(event, widget.id)}
+              onDrop={(event) => handleWidgetDrop(event, widget.id)}
               onEdit={() => handleEditWidget(widget)}
               onDelete={() => handleDeleteWidget(widget)}
+              onToggleCollapse={() => handleToggleCollapse(widget)}
             />
           </Grid>
         ))}
@@ -178,6 +305,7 @@ export default function DashboardWidgets({ userId, dashboardId }) {
         }}
         onSave={handleSaveWidget}
       />
-    </Stack>
+      </Stack>
+    </DndProvider>
   );
 }

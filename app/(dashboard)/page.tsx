@@ -11,9 +11,6 @@ export default async function HomePage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" sx={{ mb: 1 }}>
-        Welcome to your Memory Core, {session?.user?.name || 'User'}!
-      </Typography>
 
       <Box sx={{ mb: 3 }}>
         <R2ImageGalleryButton />

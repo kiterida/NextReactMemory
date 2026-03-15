@@ -1,0 +1,107 @@
+I want to add a new To Do List widget feature to my existing React + Supabase + Material UI dashboard app.
+
+Context:
+- I already have a dashboard with widget support being added
+- I already have a table called memory_core_widgets for dashboard widget instances
+- I already have a memory_items table in Supabase
+- The new widget type should be called `todo_list`
+
+Feature requirements:
+1. I need a new widget type for To Do Lists
+2. Each to-do list should have:
+   - a name
+   - an optional linked memory_item_id referencing memory_items.id
+3. Each to-do list contains multiple to-do items
+4. Each to-do item should have:
+   - name
+   - due_date
+   - priority
+   - item_order
+   - is_completed
+5. Priority options must be:
+   - Normal
+   - High
+   - Urgent
+6. I need drag-and-drop reordering of to-do items using the item_order field
+7. When displaying items, they should be sorted by:
+   - Urgent first
+   - High second
+   - Normal third
+   - then by item_order ascending inside each priority group
+8. The To Do widget must have an Add button
+9. Clicking Add opens a Material UI dialog with:
+   - name
+   - due date
+   - priority
+10. Clicking an existing to-do item opens a small edit dialog to edit:
+   - name
+   - due date
+   - priority
+11. The to-do list itself should support linking to a memory_items.id, so I need a way to search memory_items and select one
+12. The widget should load the linked to-do list using the widget config in memory_core_widgets.config, for example:
+   {
+     "todo_list_id": 12
+   }
+
+Database design requirements:
+- Create a new table `memory_core_todo_lists`
+- Create a new table `memory_core_todo_items`
+- `memory_core_todo_lists` should include:
+  - id
+  - created_at
+  - updated_at
+  - name
+  - memory_item_id nullable foreign key to memory_items(id)
+- `memory_core_todo_items` should include:
+  - id
+  - created_at
+  - updated_at
+  - todo_list_id foreign key to memory_core_todo_lists(id)
+  - name
+  - due_date
+  - priority
+  - item_order
+  - is_completed
+- Add a check constraint so priority only allows Normal, High, or Urgent
+- Add useful indexes
+- Use ON DELETE CASCADE from todo_items to todo_lists
+- Use ON DELETE SET NULL from todo_lists.memory_item_id to memory_items.id
+
+Implementation tasks:
+1. Create a new SQL file in my project named:
+   `supabase/sql/create_memory_core_todo_tables.sql`
+2. Put the full SQL schema in that file
+3. Create React components and helper files needed for this feature
+4. Keep the code modular and easy to extend
+
+Please generate:
+1. The SQL file contents
+2. A suggested file structure
+3. A `TodoListWidget` React component
+4. A `TodoItemDialog` component using Material UI
+5. A `TodoListConfigDialog` component that allows:
+   - editing the list name
+   - searching/selecting a memory_items row to link
+6. Supabase helper functions for:
+   - createTodoList
+   - updateTodoList
+   - getTodoListWithItems
+   - createTodoItem
+   - updateTodoItem
+   - reorderTodoItems
+   - deleteTodoItem
+7. Drag-and-drop support for reordering todo items
+8. Clear comments in the code
+9. Use JavaScript, not TypeScript
+10. Use Material UI styling consistent with a dashboard widget
+
+Also generate example SQL queries for:
+- selecting a todo list with all items
+- selecting items sorted by priority then item_order
+- batch updating item_order after drag-and-drop
+
+Assume my app already uses:
+- React
+- JavaScript
+- Material UI
+- Supabase client helpers
