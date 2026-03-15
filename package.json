@@ -1,6 +1,6 @@
 {
   "name": "auth-nextjs-themed",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "scripts": {
     "predev": "node scripts/check-path-case.js",
     "prebuild": "node scripts/check-path-case.js && node scripts/bump-build-version.js",

@@ -1,9 +1,12 @@
 'use client';
 import * as React from 'react';
 import { usePathname, useParams, useRouter } from 'next/navigation';
+import { useActivePage } from '@toolpad/core';
 import { DashboardLayout, ThemeSwitcher } from '@toolpad/core/DashboardLayout';
 import { PageContainer, PageHeaderToolbar, PageHeader } from '@toolpad/core/PageContainer';
+import Breadcrumbs from '@mui/material/Breadcrumbs';
 import IconButton from '@mui/material/IconButton';
+import Link from '@mui/material/Link';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Box from '@mui/material/Box';
@@ -31,6 +34,7 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import ManageSearchIcon from '@mui/icons-material/ManageSearch';
 import AppTitleWithVersion from '../components/AppTitleWithVersion';
+import R2ImageGalleryButton from '../components/R2ImageGalleryButton';
 
 type MemoryItem = {
   id: string;
@@ -299,17 +303,40 @@ export default function Layout(props: { children: React.ReactNode }) {
   };
 
   function CustomPageToolbar() {
-    const memoryTesterPage = usePathname() === '/memoryTester';
+    const currentPathname = usePathname();
+    const isDashboardPage = currentPathname === '/';
+    const memoryTesterPage = currentPathname === '/memoryTester';
 
-    return memoryTesterPage ? (
-      <PageHeaderToolbar>
-        <Tooltip title="Add to Revision list">
-          <IconButton onClick={() => window.dispatchEvent(new Event('run-add-to-revision-list'))} color="success" aria-label="Add to revision List">
-            <FactCheckIcon color="secondary" />
-          </IconButton>
-        </Tooltip>
-      </PageHeaderToolbar>
-    ) : (
+    if (isDashboardPage) {
+      return (
+        <PageHeaderToolbar>
+          <Tooltip title="Add widget">
+            <IconButton
+              onClick={() => window.dispatchEvent(new Event('open-dashboard-widget-picker'))}
+              color="primary"
+              aria-label="Add widget"
+            >
+              <AddCircleIcon />
+            </IconButton>
+          </Tooltip>
+          <R2ImageGalleryButton iconOnly />
+        </PageHeaderToolbar>
+      );
+    }
+
+    if (memoryTesterPage) {
+      return (
+        <PageHeaderToolbar>
+          <Tooltip title="Add to Revision list">
+            <IconButton onClick={() => window.dispatchEvent(new Event('run-add-to-revision-list'))} color="success" aria-label="Add to revision List">
+              <FactCheckIcon color="secondary" />
+            </IconButton>
+          </Tooltip>
+        </PageHeaderToolbar>
+      );
+    }
+
+    return (
       <PageHeaderToolbar>
         <Tooltip title="Create New Memory List">
           <IconButton onClick={onCreateNewMemoryList} color="success" aria-label="Create New Memory List">
@@ -321,12 +348,62 @@ export default function Layout(props: { children: React.ReactNode }) {
   }
 
   function CustomPageHeader() {
+    const currentPathname = usePathname();
+    const activePage = useActivePage();
     const CustomPageToolbarComponent = React.useCallback(
       () => <CustomPageToolbar />,
       [],
     );
 
-    return <PageHeader slots={{ toolbar: CustomPageToolbarComponent }} />;
+    if (currentPathname === '/') {
+      const breadcrumbs = activePage?.breadcrumbs ?? [];
+
+      return (
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          spacing={2}
+          sx={{ minHeight: 40 }}
+        >
+          <Breadcrumbs aria-label="breadcrumb">
+            {breadcrumbs.map((item, index) =>
+              item.path ? (
+                <Link
+                  key={`${item.title}-${index}`}
+                  href={item.path}
+                  underline="hover"
+                  color="inherit"
+                >
+                  {item.title}
+                </Link>
+              ) : (
+                <Typography key={`${item.title}-${index}`} color="text.primary">
+                  {item.title}
+                </Typography>
+              )
+            )}
+          </Breadcrumbs>
+
+          <Paper
+            elevation={3}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              p: 0.5,
+              borderRadius: 999,
+              bgcolor: 'background.paper',
+              flexShrink: 0,
+            }}
+          >
+            <CustomPageToolbar />
+          </Paper>
+        </Stack>
+      );
+    }
+
+    return <PageHeader title="" slots={{ toolbar: CustomPageToolbarComponent }} />;
   }
 
   const CustomPageHeaderComponent = () => <CustomPageHeader />;

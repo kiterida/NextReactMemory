@@ -1,10 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import AddIcon from '@mui/icons-material/Add';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
@@ -100,6 +98,21 @@ export default function DashboardWidgets({ userId, dashboardId }) {
   React.useEffect(() => {
     loadWidgets();
   }, [loadWidgets]);
+
+  React.useEffect(() => {
+    const handleOpenWidgetPicker = () => {
+      setEditingWidget(null);
+      setSelectedWidgetType('');
+      setConfigOpen(false);
+      setPickerOpen(true);
+    };
+
+    window.addEventListener('open-dashboard-widget-picker', handleOpenWidgetPicker);
+
+    return () => {
+      window.removeEventListener('open-dashboard-widget-picker', handleOpenWidgetPicker);
+    };
+  }, []);
 
   const persistWidgetOrder = React.useCallback(async () => {
     const orderedWidgets = assignDisplayOrder(widgetsRef.current);
@@ -244,67 +257,55 @@ export default function DashboardWidgets({ userId, dashboardId }) {
   return (
     <DndProvider backend={HTML5Backend}>
       <Stack spacing={2}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
-        <Box>
-          <Typography variant="h6">Dashboard Widgets</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Add modular widgets backed by the `memory_core_widgets` table.
-          </Typography>
-        </Box>
 
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setPickerOpen(true)}>
-          Add Widget
-        </Button>
-      </Stack>
+        {error ? <Alert severity="error">{error}</Alert> : null}
 
-      {error ? <Alert severity="error">{error}</Alert> : null}
+        {loading ? (
+          <Box sx={{ py: 4 }}>
+            <CircularProgress size={28} />
+          </Box>
+        ) : null}
 
-      {loading ? (
-        <Box sx={{ py: 4 }}>
-          <CircularProgress size={28} />
-        </Box>
-      ) : null}
+        {!loading && widgets.length === 0 ? (
+          <Alert severity="info">No widgets have been added to this dashboard yet.</Alert>
+        ) : null}
 
-      {!loading && widgets.length === 0 ? (
-        <Alert severity="info">No widgets have been added to this dashboard yet.</Alert>
-      ) : null}
+        <Grid container spacing={2}>
+          {widgets.map((widget) => (
+            <Grid key={widget.id} size={{ xs: 12, md: widget.width || 6 }}>
+              <WidgetRenderer
+                widget={widget}
+                isDragging={draggingWidgetId === widget.id}
+                isDragOver={dragOverWidgetId === widget.id && draggingWidgetId !== widget.id}
+                onDragStart={(event) => handleWidgetDragStart(event, widget.id)}
+                onDragEnd={handleWidgetDragEnd}
+                onDragOver={(event) => handleWidgetDragOver(event, widget.id)}
+                onDrop={(event) => handleWidgetDrop(event, widget.id)}
+                onEdit={() => handleEditWidget(widget)}
+                onDelete={() => handleDeleteWidget(widget)}
+                onToggleCollapse={() => handleToggleCollapse(widget)}
+              />
+            </Grid>
+          ))}
+        </Grid>
 
-      <Grid container spacing={2}>
-        {widgets.map((widget) => (
-          <Grid key={widget.id} size={{ xs: 12, md: widget.width || 6 }}>
-            <WidgetRenderer
-              widget={widget}
-              isDragging={draggingWidgetId === widget.id}
-              isDragOver={dragOverWidgetId === widget.id && draggingWidgetId !== widget.id}
-              onDragStart={(event) => handleWidgetDragStart(event, widget.id)}
-              onDragEnd={handleWidgetDragEnd}
-              onDragOver={(event) => handleWidgetDragOver(event, widget.id)}
-              onDrop={(event) => handleWidgetDrop(event, widget.id)}
-              onEdit={() => handleEditWidget(widget)}
-              onDelete={() => handleDeleteWidget(widget)}
-              onToggleCollapse={() => handleToggleCollapse(widget)}
-            />
-          </Grid>
-        ))}
-      </Grid>
+        <WidgetPickerDialog
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={handleWidgetTypeSelect}
+        />
 
-      <WidgetPickerDialog
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onSelect={handleWidgetTypeSelect}
-      />
-
-      <WidgetConfigDialog
-        open={configOpen}
-        widgetType={selectedWidgetType}
-        initialValues={editingWidget}
-        onClose={() => {
-          setConfigOpen(false);
-          setSelectedWidgetType('');
-          setEditingWidget(null);
-        }}
-        onSave={handleSaveWidget}
-      />
+        <WidgetConfigDialog
+          open={configOpen}
+          widgetType={selectedWidgetType}
+          initialValues={editingWidget}
+          onClose={() => {
+            setConfigOpen(false);
+            setSelectedWidgetType('');
+            setEditingWidget(null);
+          }}
+          onSave={handleSaveWidget}
+        />
       </Stack>
     </DndProvider>
   );

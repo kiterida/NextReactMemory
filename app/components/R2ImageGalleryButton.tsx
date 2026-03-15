@@ -17,6 +17,9 @@ import Typography from '@mui/material/Typography';
 import Card from '@mui/material/Card';
 import CardActions from '@mui/material/CardActions';
 import CardContent from '@mui/material/CardContent';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
+import ImageIcon from '@mui/icons-material/Image';
 
 type GalleryImage = {
   key: string;
@@ -31,14 +34,26 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function R2ImageGalleryButton() {
+type R2ImageGalleryButtonProps = {
+  iconOnly?: boolean;
+};
+
+export default function R2ImageGalleryButton({ iconOnly = false }: R2ImageGalleryButtonProps) {
   const [open, setOpen] = React.useState(false);
 
   return (
     <>
-      <Button variant="contained" onClick={() => setOpen(true)}>
-        View Stored Images
-      </Button>
+      {iconOnly ? (
+        <Tooltip title="View stored images">
+          <IconButton onClick={() => setOpen(true)} aria-label="View stored images">
+            <ImageIcon />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Button variant="contained" onClick={() => setOpen(true)}>
+          View Stored Images
+        </Button>
+      )}
       <R2ImageGalleryDialog open={open} onClose={() => setOpen(false)} />
     </>
   );

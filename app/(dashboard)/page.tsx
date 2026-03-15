@@ -1,8 +1,6 @@
 import * as React from 'react';
-import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import { auth } from '../../auth';
-import R2ImageGalleryButton from '../components/R2ImageGalleryButton';
 import DashboardWidgets from '../components/widgets/DashboardWidgets';
 
 export default async function HomePage() {
@@ -11,11 +9,6 @@ export default async function HomePage() {
 
   return (
     <Box sx={{ p: 3 }}>
-
-      <Box sx={{ mb: 3 }}>
-        <R2ImageGalleryButton />
-      </Box>
-
       <DashboardWidgets userId={userId} dashboardId="main" />
     </Box>
   );
