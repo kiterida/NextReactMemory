@@ -150,7 +150,7 @@ export async function updateDashboardWidgetCollapsed(widgetId, isCollapsed) {
 export async function fetchMemoryItemOptions(searchTerm = '') {
   let query = supabase
     .from('memory_items')
-    .select('id, name, memory_key')
+    .select('id, name, memory_key, row_order')
     .order('name', { ascending: true })
     .limit(25);
 
@@ -176,7 +176,7 @@ export async function fetchMemoryItemById(memoryItemId) {
 
   const { data, error } = await supabase
     .from('memory_items')
-    .select('id, name, memory_key, header_image, description, rich_text')
+    .select('id, name, memory_key, row_order, header_image, description, rich_text')
     .eq('id', memoryItemId)
     .maybeSingle();
 

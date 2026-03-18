@@ -19,6 +19,48 @@ export const searchMemoryItems = async (searchString) => {
 
 const ADVANCED_SEARCH_COLUMNS = ['memory_key', 'name', 'memory_image', 'header_image', 'description', 'rich_text'];
 
+const MAX_SORT_VALUE = Number.MAX_SAFE_INTEGER;
+
+const toSortableNumber = (value) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : MAX_SORT_VALUE;
+};
+
+const getEffectiveTreeSortValue = (item) => {
+  if (item?.has_children) {
+    return toSortableNumber(item.row_order ?? item.memory_key);
+  }
+
+  return toSortableNumber(item?.memory_key ?? item?.row_order);
+};
+
+export const compareMemoryTreeItems = (a, b) => {
+  const primaryDifference = getEffectiveTreeSortValue(a) - getEffectiveTreeSortValue(b);
+  if (primaryDifference !== 0) {
+    return primaryDifference;
+  }
+
+  const memoryKeyDifference = toSortableNumber(a?.memory_key) - toSortableNumber(b?.memory_key);
+  if (memoryKeyDifference !== 0) {
+    return memoryKeyDifference;
+  }
+
+  const rowOrderDifference = toSortableNumber(a?.row_order) - toSortableNumber(b?.row_order);
+  if (rowOrderDifference !== 0) {
+    return rowOrderDifference;
+  }
+
+  return toSortableNumber(a?.id) - toSortableNumber(b?.id);
+};
+
+export const sortMemoryTreeNodes = (nodes = []) =>
+  [...nodes]
+    .map((node) => ({
+      ...node,
+      children: Array.isArray(node.children) ? sortMemoryTreeNodes(node.children) : node.children,
+    }))
+    .sort(compareMemoryTreeItems);
+
 const normalizeSearchValue = (value) => {
   if (value === null || value === undefined) {
     return '';
@@ -82,7 +124,7 @@ export const searchMemoryItemsAdvanced = async (searchString, options = {}) => {
 
   const { data, error } = await supabase
     .from('memory_items')
-    .select('id, parent_id, memory_key, name, memory_image, header_image, description, rich_text')
+    .select('id, parent_id, memory_key, row_order, name, memory_image, header_image, description, rich_text')
     .range(0, 9999);
 
   if (error) {
@@ -127,18 +169,20 @@ export const fetchRootItems = async (singleListViewId = null) => {
       return [];
     }
 
-    // Use the same RPC as default root loading so child metadata fields
-    // (like has_children/child_count) remain consistent for expand behavior.
+    // Single list view can target any list, including nested ones, so load the
+    // requested row directly from the tree view with its child metadata.
     const { data, error } = await supabase
-      .rpc('get_root_memory_items');
+      .from('memory_tree_with_starred')
+      .select('*')
+      .eq('id', listId)
+      .maybeSingle();
 
     if (error) {
       console.log("Error: fetchRootItems failed: Reason = ", error);
       return [];
     }
 
-    const rows = data ?? [];
-    return rows.filter((row) => Number(row.id) === listId);
+    return data ? [data] : [];
   }
 
   const { data, error } = await supabase
@@ -195,13 +239,12 @@ export const fetchMemoryTree = async () => {
 
   console.log("fetchMemoryTree rows = ", data.length);
 
-  // Sort data with null parent_id items first, ordered by integer memory_key
+  // Sort rows using the same tree ordering rule used by the UI.
   data.sort((a, b) => {
     if (a.parent_id === null && b.parent_id !== null) return -1;
     if (a.parent_id !== null && b.parent_id === null) return 1;
     if (a.parent_id === b.parent_id) {
-      // Convert memory_key to integer for comparison
-      return parseInt(a.memory_key, 10) - parseInt(b.memory_key, 10);
+      return compareMemoryTreeItems(a, b);
     }
     return 0;
   });
@@ -349,10 +392,10 @@ export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
 // };
 
 // Update a memory item in Supabase (for the edit form)
-export const updateMemoryItem = async (id, memory_key, name, memory_image, header_image, code_snippet, description, rich_text) => {
+export const updateMemoryItem = async (id, memory_key, row_order, name, memory_image, header_image, code_snippet, description, rich_text) => {
   const { data, error } = await supabase
     .from('memory_items')
-    .update({ memory_key, name, memory_image, header_image, code_snippet, description, rich_text })
+    .update({ memory_key, row_order, name, memory_image, header_image, code_snippet, description, rich_text })
     .eq('id', id)
     .select('*')
     .single();
@@ -395,6 +438,7 @@ export const createNewMemoryList = async () => {
       .insert([{
         name: 'New Memory List',
         memory_key: highestMemoryKey,  // Use the new memory_key
+        row_order: highestMemoryKey,
         memory_image: '',
         header_image: '',
         rich_text: '',
@@ -499,6 +543,7 @@ export const insertMultipleItems = async (parentId, amountOfItems) => {
         const records = Array.from({ length: amountOfItems }, (_, i) => ({
           name: `New Child Item ${i + 1}`,
           memory_key: newMemoryKey + i,  // 👈 incrementing
+          row_order: newMemoryKey + i,
           memory_image: '',
           header_image: '',
           rich_text: '',

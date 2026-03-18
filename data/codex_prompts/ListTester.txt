@@ -1,0 +1,37 @@
+Created with MUI components for consistent look and feel.
+
+How to access list?
+  - Context menu on tree items. So you could first search for the list then jump to the memory tester page
+
+New page called "List Tester"
+  - If you click on the page, you could get a search box that allows you to selected from root level lists.
+  - Once a list is selected, the page shows you index 0, with the memory name hidden.
+  - Two different fields to show if pressed. Memory Name and Memory Image. Click on memory image to help you remember.
+  - If you get the memory item correct, you press a green tick. If you don't press the green tick, it won't be marked as memorized and we can generate a list of all items that haven't been memorized.
+
+Controls
+  - Next and Back buttons.
+  - Only show un memorized items.
+
+
+Codex Prompt.
+
+I would like a new page created and added inside my dashboard.
+The new page should be called "List Tester"
+I want it to be built using MUI components so it has a consistent look to the rest of my app.
+On the page I want a search box. 
+- When you search, it queries the memory_items table for items where the parent_id = null and the memory_items.name field is like the search text.
+- When you select a result. I want to print the name of the list and display how many children items it contains.
+
+
+2.
+When you select a sub list. I want to display a form that I will be using to test my memory.
+The form will have a heading that displays the path to the list. for example the first list name followed by the sub list name.
+It will need to query for the children in the list and display the first item in the list with the lowest memory_key (integer based).
+I want to display that memory_key as a field called "Memory Key"
+I want the memory_items.name field also inside the form, but i want it hidden by default. I need to be able to click on it to show the name field.
+This way I will be able to see only the memory_items.memory_key and then I can try to remember what the memory_items.name is without seeing it at first, then display it when I want to check if I remembered it succseffuly.
+
+3.
+
+

@@ -1,0 +1,26 @@
+Advanced search box window.
+
+Codex. Prompt
+
+I want to create a new Advanced Search MUI dialog window that will have settings to do more advanced searches.
+
+Currently I have a search field created inside /components/ToolbarActionsSearch.tsx
+
+I would like a new button to the right of the search field with an icon that denotes an advanced search.
+
+When the button is selected I want it to show a new Advanced Search dialog.
+
+The Advanced search window features should include.
+
+If a list is currently selected in the TreeView control, it should have that list selected to search only in that list.
+
+I need to be able to select multiple lists to include in the search.
+
+I need the ability to select specific columns to search on
+- memory_key
+- name
+- memory_image
+- description
+- rich_text
+
+

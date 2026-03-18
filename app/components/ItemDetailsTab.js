@@ -264,13 +264,22 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       </Box>
 
       <CustomTabPanel value={value} index={0}>
-        <TextField
-          label="Memory Key"
-          value={selectedItem.memory_key || ''}
-          onChange={(e) => setSelectedItem({ ...selectedItem, memory_key: e.target.value })}
-          fullWidth
-          margin="normal"
-        />
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+          <TextField
+            label="Memory Key"
+            value={selectedItem.memory_key || ''}
+            onChange={(e) => setSelectedItem({ ...selectedItem, memory_key: e.target.value })}
+            fullWidth
+            margin="normal"
+          />
+          <TextField
+            label="Item Order"
+            value={selectedItem.row_order || ''}
+            onChange={(e) => setSelectedItem({ ...selectedItem, row_order: e.target.value })}
+            fullWidth
+            margin="normal"
+          />
+        </Stack>
         <TextField
           label="Memory Name"
           value={selectedItem.name || ''}

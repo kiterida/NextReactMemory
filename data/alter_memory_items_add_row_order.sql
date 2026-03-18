@@ -1,6 +1,13 @@
--- Rebuild the memory_items helper view/RPC objects so they include `header_image`
--- and `row_order`.
--- Run this in the Supabase SQL editor after the matching table columns exist.
+-- Add the row_order column to memory_items and rebuild the helper objects that
+-- power the tree UI. Existing rows are backfilled from memory_key so the
+-- current order is preserved until you start editing Item Order manually.
+
+alter table if exists public.memory_items
+add column if not exists row_order integer;
+
+update public.memory_items
+set row_order = memory_key
+where row_order is null;
 
 drop view if exists public.memory_tree_with_starred;
 

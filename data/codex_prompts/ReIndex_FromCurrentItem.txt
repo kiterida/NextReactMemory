@@ -1,0 +1,15 @@
+I want to create a new feature to re-arrange the memory_key values on a set or rows in my database given a starting row.
+
+When I pass the id of a database item I need a query to find all the other rows that are linked to the same parent_id as the passed row and also where the memory_key value is higher than that of the memory_key of the passed row.
+
+Once the set of rows are selected, I need them ordered by memory_key ascending and then I need to update each row with a new memory_key that starts from a given integer and is incremented for each row in the same order.
+
+eg. I pass in a row with id = 88
+
+It queries for the id 88 from the memory_items table and finds that the parent_id = 11439 and memory_key = 90
+
+then it queries something like this below
+
+select * from memory_items where parent_id = 11439 and memory_key > 90 order by memory_key asc
+
+once it has this list it needs to run through the list in the same order and set new values for the memory_key given a new number. say 322 and increment that new number for each new memory_key

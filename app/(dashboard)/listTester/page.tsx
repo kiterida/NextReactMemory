@@ -180,7 +180,7 @@ export default function ListTesterPage() {
 
     const { data: childItems, error: childItemsError } = await supabase
       .from('memory_items')
-      .select('id,name,memory_key')
+      .select('id,name,memory_key,row_order')
       .eq('parent_id', item.id);
 
     setIsLoadingMemoryTestItem(false);
