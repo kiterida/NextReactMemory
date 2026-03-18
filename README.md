@@ -82,6 +82,41 @@ To upload pasted/inserted Quill images to Cloudflare R2, add these values to `.e
 - `R2_BUCKET_NAME`
 - `R2_PUBLIC_BASE_URL` (public base URL for your bucket/domain, without a trailing `/`)
 
+## Manual Supabase backups
+
+The dashboard now includes a `Backup Database` toolbar button on the `/` dashboard page.
+
+When clicked, the app calls a protected Next.js API route that:
+
+1. Verifies the current NextAuth session.
+2. Uses the Supabase service role key on the server only.
+3. Reads all rows from:
+   - `memory_items`
+   - `memory_core_todo_items`
+   - `memory_core_todo_lists`
+   - `memory_core_widgets`
+4. Converts each table to a CSV file.
+5. Uploads the files into a private Supabase Storage folder like `backups/2026-03-18_14-32-10/`.
+
+Required environment variables:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_BACKUPS_BUCKET` (optional, defaults to `backups`)
+
+One-time Supabase setup:
+
+1. Run `supabase/sql/create_private_backups_bucket.sql` in the Supabase SQL editor.
+2. Add `SUPABASE_SERVICE_ROLE_KEY` to `.env.local`.
+3. Restart the Next.js server after updating env vars.
+
+Notes:
+
+- The backup bucket is private by default.
+- Uploads are done server-side, so the service role key is never exposed to the browser.
+- CSV headers are built from returned row data. If a table is completely empty, Supabase does not expose schema metadata through this route, so that CSV will be uploaded as an empty file.
+
 
 ## Deploy on Vercel
 

@@ -35,6 +35,7 @@ import FactCheckIcon from '@mui/icons-material/FactCheck';
 import ManageSearchIcon from '@mui/icons-material/ManageSearch';
 import AppTitleWithVersion from '../components/AppTitleWithVersion';
 import R2ImageGalleryButton from '../components/R2ImageGalleryButton';
+import DashboardBackupButton from '../components/DashboardBackupButton';
 
 type MemoryItem = {
   id: string;
@@ -310,6 +311,7 @@ export default function Layout(props: { children: React.ReactNode }) {
     if (isDashboardPage) {
       return (
         <PageHeaderToolbar>
+          <DashboardBackupButton />
           <Tooltip title="Add widget">
             <IconButton
               onClick={() => window.dispatchEvent(new Event('open-dashboard-widget-picker'))}
@@ -430,3 +432,4 @@ export default function Layout(props: { children: React.ReactNode }) {
     </DashboardLayout>
   );
 }
+
