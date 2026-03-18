@@ -1,0 +1,90 @@
+I want you to add a manual backup feature to my React + Supabase app.
+
+Project context:
+- My app already has a dashboard page with a toolbar.
+- I use Supabase as my backend.
+- I am on the Supabase free plan.
+- I want a manually triggered backup started by a button in the dashboard toolbar.
+- The backup should export these database tables as CSV files:
+  1. memory_items
+  2. memory_core_todo_items
+  3. memory_core_todo_lists
+  4. memory_core_widgets
+
+Goal:
+Create a backup routine that runs when I click a new backup button in the dashboard toolbar.
+
+Requirements:
+1. Add a new toolbar button on the dashboard.
+   - Use an icon from the MUI icons library that clearly represents backup.
+   - Good options would be something like Backup, Save, CloudUpload, or Download.
+   - The button should have a tooltip such as "Backup Database".
+
+2. When the user clicks the backup button:
+   - The app should start a manual backup process.
+   - Export each of the four tables to its own CSV file.
+   - Store the backup files inside Supabase Storage, not in the browser download folder.
+
+3. Storage structure:
+   - Create a folder for each backup run using the current date/time.
+   - Example folder format:
+     backups/2026-03-18_14-32-10/
+   - Inside that folder store:
+     - memory_items.csv
+     - memory_core_todo_items.csv
+     - memory_core_todo_lists.csv
+     - memory_core_widgets.csv
+
+4. Important security requirement:
+   - Do NOT put the Supabase service role key in the React frontend.
+   - Implement this safely.
+   - If needed, create a backend/server function or Supabase Edge Function that performs the export and upload securely.
+   - The frontend button should call that secure function.
+
+5. CSV export requirements:
+   - Export all rows and columns from each table.
+   - Handle pagination if needed so the export works for larger tables.
+   - Generate proper CSV with headers.
+   - Correctly escape commas, quotes, and line breaks in text fields.
+
+6. Supabase Storage:
+   - Create or use a storage bucket for backups.
+   - If a bucket does not exist, include the code or setup instructions for creating one.
+   - Assume backups should be private unless there is a strong reason to make them public.
+
+7. UI behavior:
+   - Show user feedback while backup is running.
+   - Disable the backup button during the backup.
+   - Show a success message when backup completes.
+   - Show an error message if backup fails.
+   - If possible, return the backup folder path in the success message.
+
+8. Code quality:
+   - Preserve existing app behavior.
+   - Keep the implementation modular and clean.
+   - Add any helper files needed.
+   - Reuse my existing Supabase client setup if possible.
+   - Use MUI patterns consistent with the rest of the app.
+
+9. Deliverables:
+   I want you to provide:
+   - All code changes needed
+   - New files and updated files
+   - The exact frontend button implementation
+   - The secure backend or Edge Function implementation
+   - Any SQL, storage policy, or setup steps needed
+   - Any environment variables required
+   - A short explanation of how the flow works
+
+10. If there are limitations:
+   - Explain clearly whether exporting tables directly to CSV from Supabase requires a secure server-side function.
+   - Choose the best practical approach for a React app using Supabase free tier.
+   - Do not choose an insecure approach just because it is simpler.
+
+Implementation preference:
+- Prefer a secure design using either:
+  - a Supabase Edge Function, or
+  - a small backend endpoint if the project already has one
+- If you choose one, explain why it is the better fit here.
+
+Please inspect the existing project structure first and then implement the feature in the correct files rather than giving a generic example.

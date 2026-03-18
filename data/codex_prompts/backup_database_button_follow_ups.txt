@@ -1,0 +1,54 @@
+            Me:
+            where do i find SUPABASE_SERVICE_ROLE_KEY
+
+Find it in the Supabase dashboard for your project:
+
+Open your project in Supabase.
+Go to Project Settings.
+Open API.
+Under Project API keys or API Keys, copy the service_role key.
+Put it in .env.local like:
+
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+Important: keep this server-only. Do not prefix it with NEXT_PUBLIC_, and do not expose it in client code or commit it to git.
+
+If you want, I can also check your .env.local naming against the code and tell you exactly what to add.
+
+
+            Me:
+            i've added the SUPABASE_SERVICE_ROLE_KEY with my api key to .env.local
+            I also rang the .sql file to creat the bucked and restarted the app.
+
+            but when i press the backup button it get this error:
+
+            Failed to upload memory_items.csv: mime type text/csv; charset=utf-8 is not supported
+
+
+I see the mismatch: the bucket allows text/csv, but the upload route is sending text/csv; charset=utf-8. I’m updating the server route to use the exact allowed MIME type so your existing bucket config works without extra Supabase changes.
+
+Rejected
+route.ts
++1
+-1
+route.ts
++1
+-1
+
+        .upload(storagePath, csv, {
+          contentType: 'text/csv; charset=utf-8',
+          contentType: 'text/csv',
+          upsert: false,
+The patch tool hit the same sandbox refresh issue as before, so I’m applying this one-line fix with a direct file edit fallback and then I’ll verify it landed cleanly.
+
+Ran $path='app\api\backups\manual\route.ts'; $content=Get-Content -Raw $path; $content=$content.Replace("text/csv; charset=utf-8","text/csv"); Set-Content -Path $path -Value $content
+
+
+Ran Get-Content 'app\api\backups\manual\route.ts' | Select-String -Pattern 'contentType' -Context 0,1
+
+
+Worked for 24s
+The error was caused by a MIME type mismatch. Your bucket allows text/csv, but the backup route was uploading with text/csv; charset=utf-8.
+
+I fixed that in app/api/backups/manual/route.ts (line 31), so it now uploads with contentType: 'text/csv'.
+
+Next step: restart the app again and try the backup button once more. If it still fails, send me the new error and I’ll keep going with you.

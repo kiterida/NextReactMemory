@@ -17,6 +17,8 @@ import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
 import Stack from '@mui/material/Stack';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useDrag, useDrop } from 'react-dnd';
@@ -36,6 +38,11 @@ import {
 } from './todoListUtils';
 
 const DRAG_TYPE = 'TODO_ITEM';
+const FILTER_OPTIONS = {
+  active: 'active',
+  completed: 'completed',
+  all: 'all',
+};
 
 function TodoDraggableRow({
   item,
@@ -151,6 +158,7 @@ function TodoDraggableRow({
 export default function ToDoListWidget({ widget }) {
   const todoListId = widget?.config?.todo_list_id;
   const [todoList, setTodoList] = React.useState(null);
+  const [viewMode, setViewMode] = React.useState(FILTER_OPTIONS.active);
   const [loading, setLoading] = React.useState(Boolean(todoListId));
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -320,6 +328,37 @@ export default function ToDoListWidget({ widget }) {
   };
 
   const items = sortTodoItems(todoList?.items ?? []);
+  const visibleItems = items.filter((item) => {
+    if (viewMode === FILTER_OPTIONS.active) {
+      return !item.is_completed;
+    }
+
+    if (viewMode === FILTER_OPTIONS.completed) {
+      return Boolean(item.is_completed);
+    }
+
+    return true;
+  });
+
+  const emptyStateMessage = (() => {
+    if (!todoList) {
+      return '';
+    }
+
+    if (items.length === 0) {
+      return 'No items yet. Use Add to create the first task.';
+    }
+
+    if (viewMode === FILTER_OPTIONS.active) {
+      return 'No active items.';
+    }
+
+    if (viewMode === FILTER_OPTIONS.completed) {
+      return 'No completed items yet.';
+    }
+
+    return 'No items to display.';
+  })();
 
   return (
     <>
@@ -336,9 +375,27 @@ export default function ToDoListWidget({ widget }) {
             </Typography>
           </Box>
 
-          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreateDialog}>
-            Add
-          </Button>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={viewMode}
+              onChange={(_, nextValue) => {
+                if (nextValue) {
+                  setViewMode(nextValue);
+                }
+              }}
+              aria-label="Filter to do items"
+            >
+              <ToggleButton value={FILTER_OPTIONS.active}>Active</ToggleButton>
+              <ToggleButton value={FILTER_OPTIONS.completed}>Completed</ToggleButton>
+              <ToggleButton value={FILTER_OPTIONS.all}>All</ToggleButton>
+            </ToggleButtonGroup>
+
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreateDialog}>
+              Add
+            </Button>
+          </Stack>
         </Stack>
 
         {todoList?.memory_item ? (
@@ -363,11 +420,11 @@ export default function ToDoListWidget({ widget }) {
           <Alert severity="warning">The linked to do list could not be found.</Alert>
         ) : null}
 
-        {!loading && todoList && items.length === 0 ? (
-          <Alert severity="info">No items yet. Use Add to create the first task.</Alert>
+        {!loading && todoList && visibleItems.length === 0 ? (
+          <Alert severity="info">{emptyStateMessage}</Alert>
         ) : null}
 
-        {!loading && todoList && items.length > 0 ? (
+        {!loading && todoList && visibleItems.length > 0 ? (
           <Box
             sx={{
               flex: 1,
@@ -377,7 +434,7 @@ export default function ToDoListWidget({ widget }) {
             }}
           >
             <List disablePadding>
-              {items.map((item) => (
+              {visibleItems.map((item) => (
                 <TodoDraggableRow
                   key={item.id}
                   item={item}
