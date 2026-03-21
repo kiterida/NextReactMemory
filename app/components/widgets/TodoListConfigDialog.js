@@ -23,6 +23,7 @@ function buildBaseState(initialValues) {
     height: initialValues?.height ?? 2,
     config: {
       todo_list_id: initialValues?.config?.todo_list_id || '',
+      text_lines: initialValues?.config?.text_lines ?? 2,
     },
     listName: '',
     memoryItemId: '',
@@ -180,6 +181,12 @@ export default function TodoListConfigDialog({ open, initialValues = null, onClo
       return;
     }
 
+    const textLines = Number(formState.config.text_lines);
+    if (!Number.isInteger(textLines) || textLines < 1) {
+      setError('Text lines must be at least 1.');
+      return;
+    }
+
     setSaving(true);
     setError('');
 
@@ -200,6 +207,7 @@ export default function TodoListConfigDialog({ open, initialValues = null, onClo
         height: Number(formState.height),
         config: {
           todo_list_id: todoList.id,
+          text_lines: textLines,
         },
       });
     } catch (saveError) {
@@ -276,6 +284,23 @@ export default function TodoListConfigDialog({ open, initialValues = null, onClo
             type="number"
             value={formState.height}
             onChange={(event) => setFormState((prev) => ({ ...prev, height: event.target.value }))}
+            inputProps={{ min: 1 }}
+          />
+
+          <TextField
+            label="Text Lines"
+            type="number"
+            value={formState.config.text_lines}
+            onChange={(event) =>
+              setFormState((prev) => ({
+                ...prev,
+                config: {
+                  ...prev.config,
+                  text_lines: event.target.value,
+                },
+              }))
+            }
+            helperText="How many lines of each todo item to show before truncating with ellipsis."
             inputProps={{ min: 1 }}
           />
         </Stack>

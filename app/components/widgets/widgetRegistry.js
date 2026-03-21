@@ -46,6 +46,7 @@ export const widgetRegistry = {
     },
     defaultConfig: {
       todo_list_id: '',
+      text_lines: 2,
     },
   },
 };

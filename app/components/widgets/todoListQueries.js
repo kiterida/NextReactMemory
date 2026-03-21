@@ -216,23 +216,25 @@ export async function updateTodoItem(todoItemId, itemInput) {
 }
 
 export async function reorderTodoItems(todoListId, items) {
-  const payload = items.map((item) => ({
-    id: item.id,
-    todo_list_id: todoListId,
-    item_order: Number(item.item_order ?? 0),
-  }));
+  const updates = items.map((item) =>
+    supabase
+      .from('memory_core_todo_items')
+      .update({ item_order: Number(item.item_order ?? 0) })
+      .eq('id', item.id)
+      .eq('todo_list_id', todoListId)
+      .select(TODO_ITEM_COLUMNS)
+      .single()
+  );
 
-  const { data, error } = await supabase
-    .from('memory_core_todo_items')
-    .upsert(payload, { onConflict: 'id' })
-    .select(TODO_ITEM_COLUMNS);
+  const results = await Promise.all(updates);
+  const failedUpdate = results.find((result) => result.error);
 
-  if (error) {
-    console.error('Error reordering todo items:', error);
-    throw error;
+  if (failedUpdate?.error) {
+    console.error('Error reordering todo items:', failedUpdate.error);
+    throw failedUpdate.error;
   }
 
-  return sortTodoItems(data ?? []);
+  return sortTodoItems(results.map((result) => result.data).filter(Boolean));
 }
 
 export async function deleteTodoItem(todoItemId) {

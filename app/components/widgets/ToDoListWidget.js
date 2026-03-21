@@ -46,6 +46,7 @@ const FILTER_OPTIONS = {
 
 function TodoDraggableRow({
   item,
+  textLines,
   onMove,
   onDragStart,
   onDragEnd,
@@ -123,6 +124,10 @@ function TodoDraggableRow({
                 sx={{
                   textDecoration: item.is_completed ? 'line-through' : 'none',
                   color: item.is_completed ? 'text.secondary' : 'text.primary',
+                  overflow: 'hidden',
+                  display: '-webkit-box',
+                  WebkitBoxOrient: 'vertical',
+                  WebkitLineClamp: textLines,
                 }}
               >
                 {item.name}
@@ -157,6 +162,7 @@ function TodoDraggableRow({
 
 export default function ToDoListWidget({ widget }) {
   const todoListId = widget?.config?.todo_list_id;
+  const textLines = Math.max(1, Number(widget?.config?.text_lines) || 2);
   const [todoList, setTodoList] = React.useState(null);
   const [viewMode, setViewMode] = React.useState(FILTER_OPTIONS.active);
   const [loading, setLoading] = React.useState(Boolean(todoListId));
@@ -438,6 +444,7 @@ export default function ToDoListWidget({ widget }) {
                 <TodoDraggableRow
                   key={item.id}
                   item={item}
+                  textLines={textLines}
                   onMove={handleMoveItem}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}

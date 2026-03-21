@@ -65,7 +65,7 @@ export default function TodoItemDialog({
   };
 
   return (
-    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{mode === 'edit' ? 'Edit To Do Item' : 'Add To Do Item'}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
@@ -75,6 +75,8 @@ export default function TodoItemDialog({
             label="Name"
             value={formState.name}
             onChange={(event) => handleChange('name', event.target.value)}
+            multiline
+            minRows={4}
             fullWidth
             autoFocus
           />
