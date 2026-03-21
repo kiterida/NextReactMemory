@@ -1,8 +1,10 @@
 import SchoolIcon from '@mui/icons-material/School';
 import HistoryIcon from '@mui/icons-material/History';
 import ChecklistIcon from '@mui/icons-material/Checklist';
+import PsychologyAltIcon from '@mui/icons-material/PsychologyAlt';
 import CurrentCoursesWidget from './CurrentCoursesWidget';
 import HistoryWidget from './HistoryWidget';
+import MemoryRevisionWidget from './MemoryRevisionWidget';
 import ToDoListWidget from './ToDoListWidget';
 
 export const widgetRegistry = {
@@ -12,6 +14,20 @@ export const widgetRegistry = {
     icon: SchoolIcon,
     component: CurrentCoursesWidget,
     defaultTitle: 'Current Courses',
+    defaultSize: {
+      width: 6,
+      height: 2,
+    },
+    defaultConfig: {
+      memoryItemId: '',
+    },
+  },
+  memory_revision: {
+    label: 'Memory Revision',
+    description: 'Review a linked memory item and its header image.',
+    icon: PsychologyAltIcon,
+    component: MemoryRevisionWidget,
+    defaultTitle: 'Memory Revision',
     defaultSize: {
       width: 6,
       height: 2,

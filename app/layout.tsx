@@ -6,33 +6,17 @@ import PersonIcon from '@mui/icons-material/Person';
 import BookIcon from '@mui/icons-material/Book';
 import CenterFocusWeakIcon from '@mui/icons-material/CenterFocusWeak';
 import Box from '@mui/material/Box';
-import SearchIcon from '@mui/icons-material/Search';
-import IconButton from '@mui/material/IconButton';
-import TextField from '@mui/material/TextField';
-
-//import type { Navigation } from '@toolpad/core/AppProvider';
 import { SessionProvider, signIn, signOut } from 'next-auth/react';
 import { auth } from '../auth';
 import theme from '../theme';
-import Stack from '@mui/material/Stack';
-import Tooltip from '@mui/material/Tooltip';
-import ToolbarActionsSearch from './components/ToolbarActionsSearch';
-
-import {
-  DashboardLayout,
-  ThemeSwitcher,
-  type SidebarFooterProps,
-} from '@toolpad/core/DashboardLayout';
+import { getDashboardsForUser } from './lib/dashboardServer';
+import { getDashboardIconNode } from './components/dashboards/dashboardIcons';
 
 export const metadata = {
   title: 'Memory Core',
   description: 'This is a sample app built with Toolpad Core and Next.js',
 };
 
-// Remove this (it's invalid)
-// import type { Navigation } from '@toolpad/core/AppProvider';
-
-// Add this instead
 type Navigation = {
   kind?: 'header' | 'page';
   segment?: string;
@@ -42,98 +26,119 @@ type Navigation = {
   pattern?: string;
 }[];
 
+function buildNavigation(dashboards: Array<Record<string, unknown>>): Navigation {
+  const dashboardPages = dashboards.length
+    ? dashboards.map((dashboard) => ({
+        kind: 'page' as const,
+        segment: `dashboards/${dashboard.id as string}`,
+        title: (dashboard.name as string) || 'Untitled Dashboard',
+        href: `/dashboards/${dashboard.id as string}`,
+        icon: getDashboardIconNode(dashboard.icon as string, {
+          sx: {
+            color: (dashboard.color as string) || 'inherit',
+          },
+        }),
+      }))
+    : [
+        {
+          kind: 'page' as const,
+          segment: 'dashboards',
+          title: 'Dashboards',
+          href: '/dashboards',
+          icon: <DashboardIcon />,
+        },
+      ];
 
-const NAVIGATION: Navigation = [
-  {
-    kind: 'header',
-    title: 'Main items',
-  },
-  {
-    segment: '',
-    title: 'Dashboard',
-    icon: <DashboardIcon />,
-  },
-  {
-    kind: 'page',
-    segment: 'memories',
-    title: 'Memories',
-    icon: <CenterFocusWeakIcon />, // Or any icon you like
-    href: '/memories',
-  },
-   {
-    kind: 'page',
-    segment: 'starredLists', // Use query param to toggle behavior
-    title: 'Starred Lists',
-    icon: <BookIcon />, // Or any icon you like
-  },
-  {
-    segment: 'memoryTester',
-    title: 'Memory Tester',
-    icon: <BookIcon />,
-  },
-  {
-    segment: 'listTester',
-    title: 'List Tester',
-    icon: <BookIcon />,
-  },
-  {
-    segment: 'budget',
-    title: 'Budget',
-    icon: <BookIcon />,
-  },
-  {
-    segment: 'employees',
-    title: 'Employees',
-    icon: <PersonIcon />,
-    pattern: 'employees{/:employeeId}*',
-  },
-  {
-    segment:'sample',
-    title: 'Sample Dashboard',
-  }
-];
+  return [
+    {
+      kind: 'header',
+      title: 'Dashboards',
+    },
+    ...dashboardPages,
+    {
+      kind: 'header',
+      title: 'Main items',
+    },
+    {
+      kind: 'page',
+      segment: 'memories',
+      title: 'Memories',
+      icon: <CenterFocusWeakIcon />,
+      href: '/memories',
+    },
+    {
+      kind: 'page',
+      segment: 'starredLists',
+      title: 'Starred Lists',
+      icon: <BookIcon />,
+    },
+    {
+      kind: 'page',
+      segment: 'memoryTester',
+      title: 'Memory Tester',
+      icon: <BookIcon />,
+    },
+    {
+      kind: 'page',
+      segment: 'listTester',
+      title: 'List Tester',
+      icon: <BookIcon />,
+    },
+    {
+      kind: 'page',
+      segment: 'budget',
+      title: 'Budget',
+      icon: <BookIcon />,
+    },
+    {
+      kind: 'page',
+      segment: 'employees',
+      title: 'Employees',
+      icon: <PersonIcon />,
+      pattern: 'employees{/:employeeId}*',
+    },
+    {
+      kind: 'page',
+      segment: 'sample',
+      title: 'Sample Dashboard',
+    },
+  ];
+}
 
 const BRANDING = {
   title: 'Memory Core',
-    logo: (
+  logo: (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <CenterFocusWeakIcon
-        fontSize="small"
-        sx={{ color: 'text.primary' }} // Uses theme's primary text color
-      />
+      <CenterFocusWeakIcon fontSize="small" sx={{ color: 'text.primary' }} />
     </Box>
   ),
 };
-
 
 const AUTHENTICATION = {
   signIn,
   signOut,
 };
 
-
-
-
 export default async function RootLayout(props: { children: React.ReactNode }) {
   const session = await auth();
+  const userId = session?.user?.email || session?.user?.name || null;
+  const dashboards = await getDashboardsForUser(userId);
+  const navigation = buildNavigation(dashboards);
 
   return (
     <html lang="en" data-toolpad-color-scheme="light" suppressHydrationWarning>
       <body>
         <SessionProvider session={session}>
           <AppRouterCacheProvider options={{ enableCssLayer: true }}>
-          
             <NextAppProvider
-              navigation={NAVIGATION}
+              navigation={navigation}
               branding={BRANDING}
               session={session}
               authentication={AUTHENTICATION}
               theme={theme}
-            
             >
-            {props.children}
+              {props.children}
             </NextAppProvider>
-            
           </AppRouterCacheProvider>
         </SessionProvider>
       </body>

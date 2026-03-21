@@ -1,15 +1,15 @@
-import * as React from 'react';
-import Box from '@mui/material/Box';
+import { redirect } from 'next/navigation';
 import { auth } from '../../auth';
-import DashboardWidgets from '../components/widgets/DashboardWidgets';
+import { getPreferredDashboardForUser } from '../lib/dashboardServer';
 
 export default async function HomePage() {
   const session = await auth();
   const userId = session?.user?.email || session?.user?.name || null;
+  const preferredDashboard = await getPreferredDashboardForUser(userId);
 
-  return (
-    <Box sx={{ p: 3 }}>
-      <DashboardWidgets userId={userId} dashboardId="main" />
-    </Box>
-  );
+  if (preferredDashboard) {
+    redirect(`/dashboards/${preferredDashboard.id}`);
+  }
+
+  redirect('/dashboards');
 }

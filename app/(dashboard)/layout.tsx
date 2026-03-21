@@ -36,6 +36,7 @@ import ManageSearchIcon from '@mui/icons-material/ManageSearch';
 import AppTitleWithVersion from '../components/AppTitleWithVersion';
 import R2ImageGalleryButton from '../components/R2ImageGalleryButton';
 import DashboardBackupButton from '../components/DashboardBackupButton';
+import DashboardSidebarFooter from '../components/dashboards/DashboardSidebarFooter';
 
 type MemoryItem = {
   id: string;
@@ -305,7 +306,7 @@ export default function Layout(props: { children: React.ReactNode }) {
 
   function CustomPageToolbar() {
     const currentPathname = usePathname();
-    const isDashboardPage = currentPathname === '/';
+    const isDashboardPage = currentPathname.startsWith('/dashboards/');
     const memoryTesterPage = currentPathname === '/memoryTester';
 
     if (isDashboardPage) {
@@ -358,6 +359,10 @@ export default function Layout(props: { children: React.ReactNode }) {
     );
 
     if (currentPathname === '/') {
+      return <PageHeader title="" slots={{ toolbar: CustomPageToolbarComponent }} />;
+    }
+
+    if (currentPathname.startsWith('/dashboards/')) {
       const breadcrumbs = activePage?.breadcrumbs ?? [];
 
       return (
@@ -417,6 +422,7 @@ export default function Layout(props: { children: React.ReactNode }) {
       sx={{ height: '100vh', overflow: 'hidden' }}
       slots={{
         appTitle: AppTitleWithVersion,
+        sidebarFooter: DashboardSidebarFooter,
         toolbarActions: showSearchToolbar ? ToolbarActionsSearch : undefined,
       }}
     >
@@ -432,4 +438,5 @@ export default function Layout(props: { children: React.ReactNode }) {
     </DashboardLayout>
   );
 }
+
 

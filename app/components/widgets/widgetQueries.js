@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { getWidgetsForDashboard } from '../dashboards/dashboardQueries';
 
 const WIDGET_COLUMNS = `
   id,
@@ -19,27 +20,10 @@ const WIDGET_COLUMNS = `
   config
 `;
 
+export { getWidgetsForDashboard };
+
 export async function fetchDashboardWidgets({ userId, dashboardId }) {
-  let query = supabase
-    .from('memory_core_widgets')
-    .select(WIDGET_COLUMNS)
-    .eq('dashboard_id', dashboardId)
-    .eq('is_visible', true)
-    .order('display_order', { ascending: true })
-    .order('created_at', { ascending: true });
-
-  if (userId) {
-    query = query.eq('user_id', userId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('Error fetching dashboard widgets:', error);
-    throw error;
-  }
-
-  return data ?? [];
+  return getWidgetsForDashboard({ userId, dashboardId });
 }
 
 export async function createDashboardWidget(widgetInput) {

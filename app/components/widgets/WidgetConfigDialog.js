@@ -12,7 +12,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 import TodoListConfigDialog from './TodoListConfigDialog';
-import { fetchMemoryItemOptions } from './widgetQueries';
+import { fetchMemoryItemById, fetchMemoryItemOptions } from './widgetQueries';
 import { getWidgetDefinition } from './widgetRegistry';
 
 const SIZE_OPTIONS = [4, 6, 8, 12];
@@ -57,6 +57,7 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
 
   React.useEffect(() => {
     setFormState(buildEditFormState(widgetType, initialValues));
+    setMemoryItemOptions([]);
     setMemoryItemSearch('');
     setError('');
   }, [initialValues, widgetType, open]);
@@ -66,7 +67,7 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
     let timeoutId;
 
     async function loadMemoryItems() {
-      if (widgetType !== 'current_courses' || !open) {
+      if (!['current_courses', 'memory_revision'].includes(widgetType) || !open) {
         return;
       }
 
@@ -95,6 +96,43 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
       clearTimeout(timeoutId);
     };
   }, [memoryItemSearch, open, widgetType]);
+
+  React.useEffect(() => {
+    let ignore = false;
+
+    async function ensureSelectedMemoryItem() {
+      if (!open || !['current_courses', 'memory_revision'].includes(widgetType)) {
+        return;
+      }
+
+      const selectedId = formState.config.memoryItemId;
+      if (!selectedId) {
+        return;
+      }
+
+      const alreadyLoaded = memoryItemOptions.some((item) => String(item.id) === String(selectedId));
+      if (alreadyLoaded) {
+        return;
+      }
+
+      try {
+        const memoryItem = await fetchMemoryItemById(selectedId);
+        if (!ignore && memoryItem) {
+          setMemoryItemOptions((prev) => [memoryItem, ...prev]);
+        }
+      } catch (fetchError) {
+        if (!ignore) {
+          setError(fetchError.message || 'Unable to load the selected memory item.');
+        }
+      }
+    }
+
+    ensureSelectedMemoryItem();
+
+    return () => {
+      ignore = true;
+    };
+  }, [formState.config.memoryItemId, memoryItemOptions, open, widgetType]);
 
   if (!definition) {
     return null;
@@ -126,7 +164,7 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
     setError('');
 
     try {
-      if (widgetType === 'current_courses' && !formState.config.memoryItemId) {
+      if (['current_courses', 'memory_revision'].includes(widgetType) && !formState.config.memoryItemId) {
         throw new Error('Please select a memory item.');
       }
 
@@ -185,7 +223,7 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
             inputProps={{ min: 1 }}
           />
 
-          {widgetType === 'current_courses' ? (
+          {['current_courses', 'memory_revision'].includes(widgetType) ? (
             <Autocomplete
               options={memoryItemOptions}
               loading={memoryItemLoading}

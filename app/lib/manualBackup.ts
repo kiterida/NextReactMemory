@@ -17,6 +17,11 @@ export const BACKUP_TABLES = [
     orderColumn: 'id',
   },
   {
+    tableName: 'memory_core_dashboards',
+    fileName: 'memory_core_dashboards.csv',
+    orderColumn: 'id',
+  },
+  {
     tableName: 'memory_core_widgets',
     fileName: 'memory_core_widgets.csv',
     orderColumn: 'id',

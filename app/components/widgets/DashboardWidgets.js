@@ -16,7 +16,7 @@ import { assignDisplayOrder, getNextDisplayOrder, moveWidgetInList } from './wid
 import {
   createDashboardWidget,
   deleteDashboardWidget,
-  fetchDashboardWidgets,
+  getWidgetsForDashboard,
   updateDashboardWidget,
   updateDashboardWidgetCollapsed,
   updateDashboardWidgetOrder,
@@ -86,7 +86,7 @@ export default function DashboardWidgets({ userId, dashboardId }) {
     setError('');
 
     try {
-      const data = await fetchDashboardWidgets({ userId, dashboardId });
+      const data = await getWidgetsForDashboard({ userId, dashboardId });
       setWidgets(data);
     } catch (loadError) {
       setError(loadError.message || 'Unable to load widgets.');
@@ -310,3 +310,4 @@ export default function DashboardWidgets({ userId, dashboardId }) {
     </DndProvider>
   );
 }
+
