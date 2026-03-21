@@ -26,6 +26,22 @@ export function sortTodoItems(items = []) {
   });
 }
 
+export function sortTodoTags(tags = []) {
+  return [...tags].sort((left, right) => {
+    const orderDiff = Number(left.display_order ?? 0) - Number(right.display_order ?? 0);
+    if (orderDiff !== 0) {
+      return orderDiff;
+    }
+
+    const nameDiff = String(left.name ?? '').localeCompare(String(right.name ?? ''));
+    if (nameDiff !== 0) {
+      return nameDiff;
+    }
+
+    return Number(left.id ?? 0) - Number(right.id ?? 0);
+  });
+}
+
 export function moveTodoItem(items, draggedItemId, targetItemId) {
   const orderedItems = sortTodoItems(items);
   const fromIndex = orderedItems.findIndex((item) => item.id === draggedItemId);
@@ -94,4 +110,23 @@ export function getPriorityChipColor(priority) {
   }
 
   return 'default';
+}
+
+export function getTodoTagChipSx(color, variant = 'filled') {
+  if (!color) {
+    return variant === 'outlined'
+      ? undefined
+      : {
+          bgcolor: 'action.selected',
+        };
+  }
+
+  return {
+    bgcolor: variant === 'outlined' ? 'transparent' : color,
+    borderColor: color,
+    color: variant === 'outlined' ? color : '#fff',
+    '& .MuiChip-deleteIcon': {
+      color: variant === 'outlined' ? color : 'rgba(255,255,255,0.7)',
+    },
+  };
 }

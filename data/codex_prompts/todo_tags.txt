@@ -1,0 +1,173 @@
+I want to extend my existing To Do List widget feature in my React + Supabase + Material UI app by adding list-specific tags/categories for todo items, along with filtering in the widget UI.
+
+Current context:
+- I already have:
+  - `memory_core_widgets`
+  - `memory_core_todo_lists`
+  - `memory_core_todo_items`
+- I already have a working To Do List widget on the dashboard
+- Todo items currently support:
+  - name
+  - due date
+  - priority
+  - ordering
+- Priority already exists and should remain as-is:
+  - Urgent
+  - High
+  - Normal
+
+New feature goal:
+I want to add a second organizational layer using tags/categories.
+
+Example:
+- A todo list can represent a project
+- That project can have multiple features or areas
+- I want to tag todo items against those features
+- Then I want to filter the displayed todo items by tag/category inside the widget
+
+Important design decision:
+Please use the recommended scalable approach:
+- tags should be specific to a single todo list
+- one todo item can have one or more tags
+- selected tags should be shown in the UI as chips
+- filtering should be by tag/category inside the widget
+
+Database design requirements:
+Please add the following new tables:
+
+1. `memory_core_todo_tags`
+This table stores tags that belong to a specific todo list.
+
+Suggested columns:
+- id
+- created_at
+- updated_at
+- todo_list_id
+- name
+- color nullable
+- display_order
+
+Behavior:
+- tags belong to one todo list
+- deleting a todo list should cascade-delete its tags
+
+2. `memory_core_todo_item_tags`
+This is a join table between todo items and todo tags.
+
+Suggested columns:
+- id
+- todo_item_id
+- todo_tag_id
+
+Behavior:
+- deleting a todo item should delete its tag links
+- deleting a todo tag should delete its tag links
+- add a unique constraint so the same tag cannot be linked to the same item twice
+
+Please create a SQL file in my project:
+- `supabase/sql/create_memory_core_todo_tags.sql`
+
+The SQL file should:
+1. Create both tables
+2. Add all foreign keys
+3. Add indexes where useful
+4. Add the unique constraint
+5. Add comments explaining the schema
+
+UI / feature requirements:
+
+1. Add/Edit Todo Item dialog
+Update my existing Material UI todo item dialog so that it supports tags.
+
+I want the better version of the tag selector:
+- Use MUI Autocomplete with multi-select chips
+- User can pick one or more tags
+- Selected tags should display as chips
+- Tags should come from the current todo list only
+
+Behavior:
+- When creating a todo item, user can assign zero or more tags
+- When editing a todo item, the current tags should load and show as selected chips
+- Saving should update the join table correctly
+
+2. Tag filtering inside the widget
+Add a filter UI to the To Do List widget so I can filter the visible todo items by tag/category.
+
+Recommended UI:
+- Add a tag filter control in the widget header or near the top of the widget
+- Use Material UI
+- It can be either:
+  - a Select dropdown, or
+  - an Autocomplete
+- Default filter should be “All”
+- Selecting a tag should only show todo items linked to that tag
+- Keep the widget styling consistent with the rest of the app
+
+3. Sorting behavior
+Keep the existing item display sorting behavior:
+- Urgent first
+- High second
+- Normal third
+- then item_order ascending within each priority group
+
+Filtering by tag should happen before rendering, but sorting should still apply to the filtered set.
+
+4. Tag management
+Please add a basic way to manage tags for a todo list.
+
+Minimum requirement:
+- The item dialog must be able to load all available tags for the current todo list
+
+Recommended improvement:
+- Add a small dialog or simple UI to create a new tag for the current todo list
+- Keep this minimal and consistent with Material UI styling
+- It does not need to be advanced, but should allow:
+  - tag name
+  - optional color
+
+Code requirements:
+- Use JavaScript, not TypeScript
+- Use Material UI
+- Keep code modular and easy to extend
+- Preserve all existing todo widget functionality
+- Do not break current priority sorting or item ordering
+- Use my existing Supabase helper style if possible
+- Add comments where helpful
+
+Implementation tasks:
+1. Create the SQL file:
+   - `supabase/sql/create_memory_core_todo_tags.sql`
+2. Add Supabase helpers for:
+   - getTodoTags(todoListId)
+   - createTodoTag(todoListId, name, color)
+   - getTodoItemTags(todoItemId)
+   - setTodoItemTags(todoItemId, tagIds)
+   - getTodoListWithItemsAndTags(todoListId)
+3. Update the Todo Item dialog to support:
+   - MUI Autocomplete
+   - multiple selected tags
+   - chips for selected tags
+4. Update the Todo List widget UI to support:
+   - tag filtering
+   - display of selected item tags if appropriate
+5. Ensure saving/editing an item correctly updates the join table
+6. Keep existing add/edit/delete/reorder functionality working
+7. Add a step-by-step explanation of what changed
+
+Please generate:
+1. The full SQL file contents for:
+   - `supabase/sql/create_memory_core_todo_tags.sql`
+2. Suggested file structure changes
+3. Updated Supabase helper functions
+4. Updated `TodoItemDialog` code with MUI Autocomplete multi-select chips
+5. Updated `TodoListWidget` code with tag filtering
+6. Any new small tag creation dialog/component if needed
+7. A clear explanation of the data flow and UI flow
+
+Important rules:
+- Tags are list-specific, not global
+- A todo item can have multiple tags
+- Use a join table for item-tag relationships
+- Use Material UI Autocomplete with multi-select chips in the item dialog
+- Keep the widget usable and not overly complicated
+- Preserve existing todo widget behavior and styling

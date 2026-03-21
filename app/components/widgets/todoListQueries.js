@@ -1,7 +1,7 @@
 'use client';
 
 import { supabase } from '../supabaseClient';
-import { sortTodoItems } from './todoListUtils';
+import { sortTodoItems, sortTodoTags } from './todoListUtils';
 
 const TODO_LIST_COLUMNS = `
   id,
@@ -9,6 +9,16 @@ const TODO_LIST_COLUMNS = `
   updated_at,
   name,
   memory_item_id
+`;
+
+const TODO_TAG_COLUMNS = `
+  id,
+  created_at,
+  updated_at,
+  todo_list_id,
+  name,
+  color,
+  display_order
 `;
 
 const TODO_ITEM_COLUMNS = `
@@ -23,6 +33,35 @@ const TODO_ITEM_COLUMNS = `
   is_completed
 `;
 
+function mapTodoTag(tag) {
+  if (!tag) {
+    return null;
+  }
+
+  return {
+    ...tag,
+    color: tag.color || null,
+  };
+}
+
+function mapTodoItemResult(data) {
+  if (!data) {
+    return null;
+  }
+
+  const tags = sortTodoTags(
+    (data.item_tags ?? [])
+      .map((link) => mapTodoTag(link.tag))
+      .filter(Boolean)
+  );
+
+  return {
+    ...data,
+    tags,
+    tagIds: tags.map((tag) => tag.id),
+  };
+}
+
 function mapTodoListResult(data) {
   if (!data) {
     return null;
@@ -30,8 +69,116 @@ function mapTodoListResult(data) {
 
   return {
     ...data,
-    items: sortTodoItems(data.items ?? []),
+    tags: sortTodoTags((data.tags ?? []).map(mapTodoTag).filter(Boolean)),
+    items: sortTodoItems((data.items ?? []).map(mapTodoItemResult).filter(Boolean)),
   };
+}
+
+export async function getTodoTags(todoListId) {
+  if (!todoListId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('memory_core_todo_tags')
+    .select(TODO_TAG_COLUMNS)
+    .eq('todo_list_id', todoListId)
+    .order('display_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching todo tags:', error);
+    throw error;
+  }
+
+  return sortTodoTags((data ?? []).map(mapTodoTag).filter(Boolean));
+}
+
+export async function createTodoTag(todoListId, name, color = null) {
+  if (!todoListId) {
+    throw new Error('A todo list is required to create a tag.');
+  }
+
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) {
+    throw new Error('Tag name is required.');
+  }
+
+  const existingTags = await getTodoTags(todoListId);
+  const payload = {
+    todo_list_id: todoListId,
+    name: trimmedName,
+    color: color || null,
+    display_order: existingTags.length,
+  };
+
+  const { data, error } = await supabase
+    .from('memory_core_todo_tags')
+    .insert(payload)
+    .select(TODO_TAG_COLUMNS)
+    .single();
+
+  if (error) {
+    console.error('Error creating todo tag:', error);
+    throw error;
+  }
+
+  return mapTodoTag(data);
+}
+
+export async function getTodoItemTags(todoItemId) {
+  if (!todoItemId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('memory_core_todo_item_tags')
+    .select(`
+      todo_tag_id,
+      tag:memory_core_todo_tags(${TODO_TAG_COLUMNS})
+    `)
+    .eq('todo_item_id', todoItemId);
+
+  if (error) {
+    console.error('Error fetching todo item tags:', error);
+    throw error;
+  }
+
+  return sortTodoTags((data ?? []).map((link) => mapTodoTag(link.tag)).filter(Boolean));
+}
+
+export async function setTodoItemTags(todoItemId, tagIds) {
+  if (!todoItemId) {
+    return [];
+  }
+
+  const uniqueTagIds = [...new Set((tagIds ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+
+  const { error: deleteError } = await supabase
+    .from('memory_core_todo_item_tags')
+    .delete()
+    .eq('todo_item_id', todoItemId);
+
+  if (deleteError) {
+    console.error('Error clearing todo item tags:', deleteError);
+    throw deleteError;
+  }
+
+  if (uniqueTagIds.length > 0) {
+    const { error: insertError } = await supabase
+      .from('memory_core_todo_item_tags')
+      .insert(uniqueTagIds.map((todoTagId) => ({
+        todo_item_id: todoItemId,
+        todo_tag_id: todoTagId,
+      })));
+
+    if (insertError) {
+      console.error('Error saving todo item tags:', insertError);
+      throw insertError;
+    }
+  }
+
+  return getTodoItemTags(todoItemId);
 }
 
 export async function createTodoList({ name, memoryItemId = null }) {
@@ -91,7 +238,7 @@ export async function deleteTodoList(todoListId) {
   }
 }
 
-export async function getTodoListWithItems(todoListId) {
+export async function getTodoListWithItemsAndTags(todoListId) {
   if (!todoListId) {
     return null;
   }
@@ -101,17 +248,28 @@ export async function getTodoListWithItems(todoListId) {
     .select(`
       ${TODO_LIST_COLUMNS},
       memory_item:memory_items(id, name, memory_key),
-      items:memory_core_todo_items(${TODO_ITEM_COLUMNS})
+      tags:memory_core_todo_tags(${TODO_TAG_COLUMNS}),
+      items:memory_core_todo_items(
+        ${TODO_ITEM_COLUMNS},
+        item_tags:memory_core_todo_item_tags(
+          todo_tag_id,
+          tag:memory_core_todo_tags(${TODO_TAG_COLUMNS})
+        )
+      )
     `)
     .eq('id', todoListId)
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching todo list with items:', error);
+    console.error('Error fetching todo list with items and tags:', error);
     throw error;
   }
 
   return mapTodoListResult(data);
+}
+
+export async function getTodoListWithItems(todoListId) {
+  return getTodoListWithItemsAndTags(todoListId);
 }
 
 export async function createTodoItem(todoListId, itemInput) {
@@ -155,7 +313,12 @@ export async function createTodoItem(todoListId, itemInput) {
     throw error;
   }
 
-  return data;
+  const tags = await setTodoItemTags(data.id, itemInput.tagIds ?? []);
+  return {
+    ...data,
+    tags,
+    tagIds: tags.map((tag) => tag.id),
+  };
 }
 
 export async function updateTodoItem(todoItemId, itemInput) {
@@ -228,7 +391,15 @@ export async function updateTodoItem(todoItemId, itemInput) {
     throw error;
   }
 
-  return data;
+  const tags = Object.prototype.hasOwnProperty.call(itemInput, 'tagIds')
+    ? await setTodoItemTags(todoItemId, itemInput.tagIds)
+    : await getTodoItemTags(todoItemId);
+
+  return {
+    ...data,
+    tags,
+    tagIds: tags.map((tag) => tag.id),
+  };
 }
 
 export async function reorderTodoItems(todoListId, items) {
@@ -250,7 +421,8 @@ export async function reorderTodoItems(todoListId, items) {
     throw failedUpdate.error;
   }
 
-  return sortTodoItems(results.map((result) => result.data).filter(Boolean));
+  const refreshedTodoList = await getTodoListWithItemsAndTags(todoListId);
+  return refreshedTodoList?.items ?? [];
 }
 
 export async function deleteTodoItem(todoItemId) {

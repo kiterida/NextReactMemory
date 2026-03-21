@@ -12,11 +12,17 @@ import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
 import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
+import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
@@ -25,16 +31,19 @@ import { useDrag, useDrop } from 'react-dnd';
 import TodoItemDialog from './TodoItemDialog';
 import {
   createTodoItem,
+  createTodoTag,
   deleteTodoItem,
-  getTodoListWithItems,
+  getTodoListWithItemsAndTags,
   reorderTodoItems,
   updateTodoItem,
 } from './todoListQueries';
 import {
   formatDueDateLabel,
   getPriorityChipColor,
+  getTodoTagChipSx,
   moveTodoItem,
   sortTodoItems,
+  sortTodoTags,
 } from './todoListUtils';
 
 const DRAG_TYPE = 'TODO_ITEM';
@@ -43,6 +52,7 @@ const FILTER_OPTIONS = {
   completed: 'completed',
   all: 'all',
 };
+const ALL_TAG_FILTER = 'all';
 
 function TodoDraggableRow({
   item,
@@ -119,25 +129,41 @@ function TodoDraggableRow({
 
         <ListItemText
           primary={
-            <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
-              <Typography
-                sx={{
-                  textDecoration: item.is_completed ? 'line-through' : 'none',
-                  color: item.is_completed ? 'text.secondary' : 'text.primary',
-                  overflow: 'hidden',
-                  display: '-webkit-box',
-                  WebkitBoxOrient: 'vertical',
-                  WebkitLineClamp: textLines,
-                }}
-              >
-                {item.name}
-              </Typography>
-              <Chip
-                size="small"
-                label={item.priority}
-                color={getPriorityChipColor(item.priority)}
-                variant={item.priority === 'Normal' ? 'outlined' : 'filled'}
-              />
+            <Stack spacing={1}>
+              <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                <Typography
+                  sx={{
+                    textDecoration: item.is_completed ? 'line-through' : 'none',
+                    color: item.is_completed ? 'text.secondary' : 'text.primary',
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitBoxOrient: 'vertical',
+                    WebkitLineClamp: textLines,
+                  }}
+                >
+                  {item.name}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={item.priority}
+                  color={getPriorityChipColor(item.priority)}
+                  variant={item.priority === 'Normal' ? 'outlined' : 'filled'}
+                />
+              </Stack>
+
+              {item.tags?.length ? (
+                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                  {item.tags.map((tag) => (
+                    <Chip
+                      key={tag.id}
+                      size="small"
+                      label={tag.name}
+                      variant="outlined"
+                      sx={getTodoTagChipSx(tag.color, 'outlined')}
+                    />
+                  ))}
+                </Stack>
+              ) : null}
             </Stack>
           }
           secondary={formatDueDateLabel(item.due_date)}
@@ -165,11 +191,16 @@ export default function ToDoListWidget({ widget }) {
   const textLines = Math.max(1, Number(widget?.config?.text_lines) || 2);
   const [todoList, setTodoList] = React.useState(null);
   const [viewMode, setViewMode] = React.useState(FILTER_OPTIONS.active);
+  const [tagFilterId, setTagFilterId] = React.useState(ALL_TAG_FILTER);
   const [loading, setLoading] = React.useState(Boolean(todoListId));
   const [saving, setSaving] = React.useState(false);
+  const [tagSaving, setTagSaving] = React.useState(false);
+  const [deleteSaving, setDeleteSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [itemDialogOpen, setItemDialogOpen] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState(null);
+  const [createItemDefaults, setCreateItemDefaults] = React.useState(null);
+  const [deletingItem, setDeletingItem] = React.useState(null);
   const dragSnapshotRef = React.useRef([]);
   const hasPendingReorderRef = React.useRef(false);
   const todoListRef = React.useRef(null);
@@ -189,7 +220,7 @@ export default function ToDoListWidget({ widget }) {
     setError('');
 
     try {
-      const data = await getTodoListWithItems(todoListId);
+      const data = await getTodoListWithItemsAndTags(todoListId);
       setTodoList(data);
     } catch (loadError) {
       setError(loadError.message || 'Unable to load this to do list.');
@@ -201,6 +232,36 @@ export default function ToDoListWidget({ widget }) {
   React.useEffect(() => {
     loadTodoList();
   }, [loadTodoList]);
+
+  React.useEffect(() => {
+    if (tagFilterId === ALL_TAG_FILTER) {
+      return;
+    }
+
+    const hasSelectedTag = (todoList?.tags ?? []).some((tag) => String(tag.id) === String(tagFilterId));
+    if (!hasSelectedTag) {
+      setTagFilterId(ALL_TAG_FILTER);
+    }
+  }, [tagFilterId, todoList?.tags]);
+
+  const handleCreateTag = async (tagValues) => {
+    if (!todoListId) {
+      throw new Error('No todo list is linked to this widget.');
+    }
+
+    setTagSaving(true);
+
+    try {
+      const createdTag = await createTodoTag(todoListId, tagValues.name, tagValues.color);
+      setTodoList((prev) => ({
+        ...prev,
+        tags: sortTodoTags([...(prev?.tags ?? []), createdTag]),
+      }));
+      return createdTag;
+    } finally {
+      setTagSaving(false);
+    }
+  };
 
   const handleCreateItem = async (itemValues) => {
     if (!todoListId) {
@@ -216,6 +277,7 @@ export default function ToDoListWidget({ widget }) {
         items: sortTodoItems([...(prev?.items ?? []), createdItem]),
       }));
       setItemDialogOpen(false);
+      setCreateItemDefaults(null);
     } finally {
       setSaving(false);
     }
@@ -257,20 +319,36 @@ export default function ToDoListWidget({ widget }) {
     }
   };
 
-  const handleDeleteItem = async (item) => {
-    const confirmed = window.confirm(`Delete "${item.name}" from this to do list?`);
-    if (!confirmed) {
+  const handleDeleteItem = (item) => {
+    setDeletingItem(item);
+  };
+
+  const handleCancelDelete = () => {
+    if (deleteSaving) {
       return;
     }
 
+    setDeletingItem(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingItem) {
+      return;
+    }
+
+    setDeleteSaving(true);
+
     try {
-      await deleteTodoItem(item.id);
+      await deleteTodoItem(deletingItem.id);
       setTodoList((prev) => ({
         ...prev,
-        items: sortTodoItems((prev?.items ?? []).filter((entry) => entry.id !== item.id)),
+        items: sortTodoItems((prev?.items ?? []).filter((entry) => entry.id !== deletingItem.id)),
       }));
+      setDeletingItem(null);
     } catch (deleteError) {
       setError(deleteError.message || 'Unable to delete the item.');
+    } finally {
+      setDeleteSaving(false);
     }
   };
 
@@ -324,23 +402,37 @@ export default function ToDoListWidget({ widget }) {
   };
 
   const openCreateDialog = () => {
+    const selectedTag = (todoList?.tags ?? []).find((tag) => String(tag.id) === String(tagFilterId));
+
     setEditingItem(null);
+    setCreateItemDefaults(
+      selectedTag
+        ? {
+            tags: [selectedTag],
+          }
+        : null
+    );
     setItemDialogOpen(true);
   };
 
   const openEditDialog = (item) => {
+    setCreateItemDefaults(null);
     setEditingItem(item);
     setItemDialogOpen(true);
   };
 
   const items = sortTodoItems(todoList?.items ?? []);
   const visibleItems = items.filter((item) => {
-    if (viewMode === FILTER_OPTIONS.active) {
-      return !item.is_completed;
+    if (viewMode === FILTER_OPTIONS.active && item.is_completed) {
+      return false;
     }
 
-    if (viewMode === FILTER_OPTIONS.completed) {
-      return Boolean(item.is_completed);
+    if (viewMode === FILTER_OPTIONS.completed && !item.is_completed) {
+      return false;
+    }
+
+    if (tagFilterId !== ALL_TAG_FILTER) {
+      return (item.tags ?? []).some((tag) => String(tag.id) === String(tagFilterId));
     }
 
     return true;
@@ -353,6 +445,10 @@ export default function ToDoListWidget({ widget }) {
 
     if (items.length === 0) {
       return 'No items yet. Use Add to create the first task.';
+    }
+
+    if (tagFilterId !== ALL_TAG_FILTER) {
+      return 'No items match the selected tag.';
     }
 
     if (viewMode === FILTER_OPTIONS.active) {
@@ -398,11 +494,42 @@ export default function ToDoListWidget({ widget }) {
               <ToggleButton value={FILTER_OPTIONS.all}>All</ToggleButton>
             </ToggleButtonGroup>
 
+            <TextField
+              select
+              size="small"
+              label="Tag"
+              value={tagFilterId}
+              onChange={(event) => setTagFilterId(event.target.value)}
+              sx={{ minWidth: 160 }}
+            >
+              <MenuItem value={ALL_TAG_FILTER}>All</MenuItem>
+              {(todoList?.tags ?? []).map((tag) => (
+                <MenuItem key={tag.id} value={String(tag.id)}>
+                  {tag.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
             <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreateDialog}>
               Add
             </Button>
           </Stack>
         </Stack>
+
+        {todoList?.tags?.length ? (
+          <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+            {todoList.tags.map((tag) => (
+              <Chip
+                key={tag.id}
+                size="small"
+                label={tag.name}
+                variant={String(tag.id) === String(tagFilterId) ? 'filled' : 'outlined'}
+                onClick={() => setTagFilterId((prev) => (String(prev) === String(tag.id) ? ALL_TAG_FILTER : String(tag.id)))}
+                sx={getTodoTagChipSx(tag.color, String(tag.id) === String(tagFilterId) ? 'filled' : 'outlined')}
+              />
+            ))}
+          </Stack>
+        ) : null}
 
         {todoList?.memory_item ? (
           <Chip
@@ -415,6 +542,7 @@ export default function ToDoListWidget({ widget }) {
           />
         ) : null}
 
+        {tagSaving ? <Alert severity="info">Saving new tag...</Alert> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
         {loading ? <CircularProgress size={24} /> : null}
 
@@ -461,7 +589,8 @@ export default function ToDoListWidget({ widget }) {
       <TodoItemDialog
         open={itemDialogOpen}
         mode={editingItem ? 'edit' : 'create'}
-        initialValues={editingItem}
+        initialValues={editingItem || createItemDefaults}
+        todoTags={todoList?.tags ?? []}
         saving={saving}
         onClose={() => {
           if (saving) {
@@ -469,9 +598,30 @@ export default function ToDoListWidget({ widget }) {
           }
           setItemDialogOpen(false);
           setEditingItem(null);
+          setCreateItemDefaults(null);
         }}
         onSave={editingItem ? handleUpdateItem : handleCreateItem}
+        onCreateTag={handleCreateTag}
       />
+
+      <Dialog open={Boolean(deletingItem)} onClose={deleteSaving ? undefined : handleCancelDelete} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete To Do Item?</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            {deletingItem
+              ? `Are you sure you want to permanently delete "${deletingItem.name}" from this to do list?`
+              : 'Are you sure you want to permanently delete this item from this to do list?'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDelete} disabled={deleteSaving}>
+            Cancel
+          </Button>
+          <Button color="error" variant="contained" onClick={handleConfirmDelete} disabled={deleteSaving}>
+            {deleteSaving ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
