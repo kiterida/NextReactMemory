@@ -75,6 +75,22 @@ export async function updateTodoList(todoListId, { name, memoryItemId = null }) 
   return data;
 }
 
+export async function deleteTodoList(todoListId) {
+  if (!todoListId) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('memory_core_todo_lists')
+    .delete()
+    .eq('id', todoListId);
+
+  if (error) {
+    console.error('Error deleting todo list:', error);
+    throw error;
+  }
+}
+
 export async function getTodoListWithItems(todoListId) {
   if (!todoListId) {
     return null;

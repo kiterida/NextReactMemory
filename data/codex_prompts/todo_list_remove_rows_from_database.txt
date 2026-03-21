@@ -1,0 +1,84 @@
+I want to update the delete behavior for my existing To Do List widget in my React + Supabase + Material UI app.
+
+Current problem:
+- I can already create To Do List widgets on the dashboard
+- When I delete a To Do List widget, it is only removed from the dashboard
+- The linked todo list row in `memory_core_todo_lists` and the linked todo items in `memory_core_todo_items` remain in the database
+- This leaves orphaned data behind
+
+Goal:
+When I delete a To Do List widget, I want the linked todo list and all of its todo items to also be permanently deleted from the database.
+
+Important behavior:
+- This delete behavior should apply to `todo_list` widgets
+- The widget should be treated as the owner of its linked todo list
+- The linked todo list id is stored in the widget config, for example:
+  {
+    "todo_list_id": 12
+  }
+- Deleting the todo list should automatically delete its todo items through the existing `ON DELETE CASCADE` relationship from `memory_core_todo_items.todo_list_id`
+
+UI requirement:
+- Before deleting, show a React Material UI confirmation dialog
+- The dialog should match the style of the rest of my app
+- This should replace any browser `window.confirm` style prompt if one exists
+- The dialog should clearly warn that the delete is permanent and will remove:
+  - the widget
+  - the linked todo list
+  - all todo list items
+
+Suggested dialog text:
+Title:
+- Delete To Do List Widget?
+
+Body:
+- This will permanently delete the widget, its linked to do list, and all list items from the database. This action cannot be undone.
+
+Buttons:
+- Cancel
+- Delete
+
+Implementation requirements:
+1. Update the widget delete flow so that when a widget of type `todo_list` is deleted:
+   - read the widget row first
+   - inspect `widget_type`
+   - read `config.todo_list_id`
+   - delete the matching row from `memory_core_todo_lists`
+   - let `memory_core_todo_items` delete automatically through cascade
+   - delete the widget row from `memory_core_widgets`
+2. Keep existing delete behavior working for non-todo widgets
+3. Use clean modular code
+4. Use JavaScript, not TypeScript
+5. Use Material UI components
+6. Keep the styling consistent with the rest of the dashboard
+
+Cleanup SQL requirement:
+I also want a once-off cleanup SQL script to remove orphaned todo lists that are no longer referenced by any existing `todo_list` widget.
+
+Please create a SQL file in my project at:
+- `supabase/sql/cleanup_orphaned_todo_lists.sql`
+
+The SQL should:
+1. Find todo lists in `memory_core_todo_lists`
+2. Check which of those ids are NOT referenced by any current widget in `memory_core_widgets`
+   where:
+   - `widget_type = 'todo_list'`
+   - `config->>'todo_list_id'` matches the list id
+3. Delete orphaned todo lists
+4. Rely on `ON DELETE CASCADE` so orphaned rows in `memory_core_todo_items` are deleted automatically
+5. Add comments explaining what the SQL does
+6. Be safe and readable
+
+Please generate:
+1. The updated React delete flow
+2. A new reusable Material UI confirmation dialog component if needed
+3. Any updated helper functions needed for widget deletion
+4. The full SQL contents for:
+   - `supabase/sql/cleanup_orphaned_todo_lists.sql`
+5. A step-by-step explanation of what changed
+
+Important:
+- Do not create a widget manager page
+- Fix the delete behavior directly in the existing widget/dashboard flow
+- Only apply the extra linked-list deletion logic to `todo_list` widgets
+- Preserve current behavior for other widget types

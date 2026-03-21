@@ -6,11 +6,11 @@ import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import WidgetCardShell from './WidgetCardShell';
 import WidgetConfigDialog from './WidgetConfigDialog';
+import WidgetDeleteDialog from './WidgetDeleteDialog';
 import WidgetPickerDialog from './WidgetPickerDialog';
 import { assignDisplayOrder, getNextDisplayOrder, moveWidgetInList } from './widgetLayoutUtils';
 import {
@@ -70,6 +70,8 @@ export default function DashboardWidgets({ userId, dashboardId }) {
   const [configOpen, setConfigOpen] = React.useState(false);
   const [selectedWidgetType, setSelectedWidgetType] = React.useState('');
   const [editingWidget, setEditingWidget] = React.useState(null);
+  const [deleteDialogWidget, setDeleteDialogWidget] = React.useState(null);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
   const [draggingWidgetId, setDraggingWidgetId] = React.useState(null);
   const [dragOverWidgetId, setDragOverWidgetId] = React.useState(null);
   const widgetsRef = React.useRef([]);
@@ -171,17 +173,34 @@ export default function DashboardWidgets({ userId, dashboardId }) {
     setConfigOpen(true);
   };
 
-  const handleDeleteWidget = async (widget) => {
-    const confirmed = window.confirm(`Delete "${widget.title}" from the dashboard?`);
-    if (!confirmed) {
+  const handleDeleteWidget = (widget) => {
+    setDeleteDialogWidget(widget);
+  };
+
+  const handleCancelDelete = () => {
+    if (deleteLoading) {
       return;
     }
 
+    setDeleteDialogWidget(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteDialogWidget) {
+      return;
+    }
+
+    setDeleteLoading(true);
+    setError('');
+
     try {
-      await deleteDashboardWidget(widget.id);
-      setWidgets((prev) => prev.filter((item) => item.id !== widget.id));
+      await deleteDashboardWidget(deleteDialogWidget.id);
+      setWidgets((prev) => prev.filter((item) => item.id !== deleteDialogWidget.id));
+      setDeleteDialogWidget(null);
     } catch (deleteError) {
       setError(deleteError.message || 'Unable to delete widget.');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -257,7 +276,6 @@ export default function DashboardWidgets({ userId, dashboardId }) {
   return (
     <DndProvider backend={HTML5Backend}>
       <Stack spacing={2}>
-
         {error ? <Alert severity="error">{error}</Alert> : null}
 
         {loading ? (
@@ -306,8 +324,15 @@ export default function DashboardWidgets({ userId, dashboardId }) {
           }}
           onSave={handleSaveWidget}
         />
+
+        <WidgetDeleteDialog
+          open={Boolean(deleteDialogWidget)}
+          widget={deleteDialogWidget}
+          loading={deleteLoading}
+          onClose={handleCancelDelete}
+          onConfirm={handleConfirmDelete}
+        />
       </Stack>
     </DndProvider>
   );
 }
-

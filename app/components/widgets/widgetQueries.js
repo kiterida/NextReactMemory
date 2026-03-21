@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getWidgetsForDashboard } from '../dashboards/dashboardQueries';
+import { deleteTodoList } from './todoListQueries';
 
 const WIDGET_COLUMNS = `
   id,
@@ -24,6 +25,25 @@ export { getWidgetsForDashboard };
 
 export async function fetchDashboardWidgets({ userId, dashboardId }) {
   return getWidgetsForDashboard({ userId, dashboardId });
+}
+
+export async function getDashboardWidgetById(widgetId) {
+  if (!widgetId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('memory_core_widgets')
+    .select(WIDGET_COLUMNS)
+    .eq('id', widgetId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching dashboard widget by id:', error);
+    throw error;
+  }
+
+  return data ?? null;
 }
 
 export async function createDashboardWidget(widgetInput) {
@@ -81,6 +101,19 @@ export async function updateDashboardWidget(widgetId, widgetInput) {
 }
 
 export async function deleteDashboardWidget(widgetId) {
+  const widget = await getDashboardWidgetById(widgetId);
+
+  if (!widget) {
+    return;
+  }
+
+  const todoListId = Number(widget?.config?.todo_list_id ?? 0);
+  const isTodoListWidget = widget.widget_type === 'todo_list' && Number.isFinite(todoListId) && todoListId > 0;
+
+  if (isTodoListWidget) {
+    await deleteTodoList(todoListId);
+  }
+
   const { error } = await supabase
     .from('memory_core_widgets')
     .delete()

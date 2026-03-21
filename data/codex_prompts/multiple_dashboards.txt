@@ -1,0 +1,119 @@
+I want to add multi-dashboard support to my existing React + Supabase + Material UI app.
+
+Current app context:
+- My app currently has a Dashboard page
+- I can already add widgets to the dashboard
+- Widgets are stored in the `memory_core_widgets` table
+- I currently have a left-side menu with a single "Dashboard" menu item
+- I now want to support multiple dashboards, each with its own widgets
+
+Goal:
+I want to change the app from having one single dashboard into a system with multiple dashboards.
+
+Examples of dashboards I want:
+- Training
+- Projects
+- Memory Revision
+- Analytics
+
+But I also want users to be able to create new dashboards dynamically in the UI, so these should not be hardcoded pages.
+
+Recommended architecture:
+- Keep one reusable Dashboard page/component
+- Add a new database table for dashboards
+- Link each widget to a dashboard using `dashboard_id`
+- Rename the left menu item from "Dashboard" to "Dashboards"
+- Show all dashboards in the left sidebar
+- Allow users to create new dashboards
+- When a dashboard is selected, display only that dashboard’s widgets
+
+Implementation requirements:
+
+1. Database
+- Create a new table called `memory_core_dashboards`
+- Suggested columns:
+  - id
+  - created_at
+  - updated_at
+  - name
+  - description
+  - icon
+  - color
+  - display_order
+  - is_default
+- Update `memory_core_widgets` so each widget belongs to a dashboard
+- Add a nullable or required `dashboard_id` foreign key referencing `memory_core_dashboards(id)`
+- Include useful indexes
+- Include a migration/backfill strategy for existing widgets
+
+2. SQL file
+Create a new SQL file in my project:
+- `supabase/sql/create_memory_core_dashboards.sql`
+
+This file should:
+- create the `memory_core_dashboards` table
+- alter `memory_core_widgets` to add `dashboard_id` if needed
+- add the foreign key constraint
+- insert example default dashboards:
+  - Training
+  - Projects
+  - Memory Revision
+  - Analytics
+- optionally assign existing widgets to a default dashboard if needed
+
+3. UI / navigation
+- Rename the current sidebar section from "Dashboard" to "Dashboards"
+- Display a list of dashboards in the left menu
+- Add a button or menu item to create a new dashboard
+- Clicking a dashboard in the sidebar should open that dashboard
+- Use one reusable dashboard page/component instead of separate hardcoded pages
+
+4. Routing
+- Use a route pattern like `/dashboards/:dashboardId`
+- The dashboard page should read the selected dashboard id from the route
+- Load that dashboard and its widgets from Supabase
+
+5. Dashboard management
+- Add support for creating a new dashboard
+- Add a Material UI dialog for creating/editing dashboards
+- Fields should include:
+  - name
+  - description
+  - optional icon
+  - optional color
+- Keep it modular so edit/delete can be added later
+
+6. Widget integration
+- When creating a new widget, it should be linked to the currently selected dashboard
+- When loading widgets, only load widgets for the current dashboard
+- Preserve all existing widget functionality
+
+7. Code requirements
+- Use JavaScript, not TypeScript
+- Use Material UI
+- Keep code modular
+- Use my existing Supabase helper style if possible
+- Do not remove current widget features
+- Extend the existing implementation cleanly
+
+Please generate:
+1. The SQL migration file contents for `supabase/sql/create_memory_core_dashboards.sql`
+2. Suggested file structure changes
+3. Supabase helper functions for:
+   - getDashboards
+   - getDashboardById
+   - createDashboard
+   - updateDashboard
+   - getWidgetsForDashboard
+4. Updated sidebar/navigation code
+5. Updated dashboard page code using route param `dashboardId`
+6. A `DashboardDialog` Material UI component for creating/editing dashboards
+7. Any changes needed when adding a widget so it saves the current `dashboard_id`
+8. A step-by-step explanation of what changed
+
+Important design rules:
+- Do not create separate hardcoded React pages for Training, Projects, Memory Revision, Analytics
+- Use one reusable dashboard page/component
+- Treat each dashboard as a database record
+- Widgets must belong to a dashboard through `dashboard_id`
+- The sidebar should list dashboards dynamically from the database
