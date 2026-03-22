@@ -14,23 +14,36 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
-import { supabase } from '@/app/components/supabaseClient';
 import {
   completeMemoryTestSession,
   createMemoryTestSession,
   recordMemoryTestResult,
   updateMemoryTestSessionProgress,
 } from '@/app/components/memoryTestHistory';
+import {
+  fetchMemoryListRoots,
+  getListDescendants,
+  getTestableNodesForList,
+  getTestableNodesForSubtree,
+} from '@/app/components/memoryData';
 
 type RootMemoryItem = {
   id: number;
   name: string | null;
+  parent_id?: number | null;
+  list_id?: number | null;
+  item_type?: string | null;
+  child_count?: number | null;
 };
 
 type MemoryTestItem = {
   id: number;
   name: string | null;
   memory_key: string | number | null;
+  list_id?: number | null;
+  item_type?: string | null;
+  is_testable?: boolean;
+  child_count?: number | null;
 };
 
 type TestSummary = {
@@ -156,13 +169,15 @@ export default function ListTesterPage() {
 
   const loadMemoryTestItems = React.useCallback(
     async ({
-      parentId,
+      listId,
+      rootId,
       sourceLabel,
       sourceType,
       startAtMemoryKey,
       notFoundMessage,
     }: {
-      parentId: number;
+      listId: number;
+      rootId: number;
       sourceLabel: string;
       sourceType: 'sublist' | 'root';
       startAtMemoryKey?: number;
@@ -175,58 +190,57 @@ export default function ListTesterPage() {
       setTestSaveError('');
       setTestSummary(null);
 
-      const { data: childItems, error: childItemsError } = await supabase
-        .from('memory_items')
-        .select('id,name,memory_key,row_order')
-        .eq('parent_id', parentId);
+      try {
+        const testItems =
+          sourceType === 'sublist'
+            ? await getTestableNodesForSubtree(rootId)
+            : await getTestableNodesForList(listId);
 
-      setIsLoadingMemoryTestItem(false);
+        const sortedItems = sortMemoryItems(testItems ?? []);
 
-      if (childItemsError) {
+        if (sortedItems.length === 0) {
+          setMemoryTestItems([]);
+          setCurrentTestIndex(0);
+          setActiveTestSourceLabel(sourceLabel);
+          setActiveTestSourceType(sourceType);
+          resetSessionTracking(listId, 0);
+          return;
+        }
+
+        let nextIndex = 0;
+
+        if (typeof startAtMemoryKey === 'number') {
+          nextIndex = sortedItems.findIndex((item) => {
+            const itemMemoryKey = Number.parseInt(String(item.memory_key ?? ''), 10);
+            return itemMemoryKey === startAtMemoryKey;
+          });
+
+          if (nextIndex === -1) {
+            setMemoryTestItems([]);
+            setCurrentTestIndex(0);
+            setActiveTestSourceLabel('');
+            setActiveTestSourceType(null);
+            resetSessionTracking(null, 0);
+            setMemoryKeyError(notFoundMessage ?? 'That memory key was not found in the selected list.');
+            return;
+          }
+        }
+
+        setMemoryTestItems(sortedItems);
+        setCurrentTestIndex(nextIndex);
+        setActiveTestSourceLabel(sourceLabel);
+        setActiveTestSourceType(sourceType);
+        resetSessionTracking(listId, sortedItems.length);
+      } catch (error) {
         setSearchError('Could not load memory test items.');
         setMemoryTestItems([]);
         setCurrentTestIndex(0);
         setActiveTestSourceLabel('');
         setActiveTestSourceType(null);
         resetSessionTracking(null, 0);
-        return;
+      } finally {
+        setIsLoadingMemoryTestItem(false);
       }
-
-      const sortedItems = sortMemoryItems(childItems ?? []);
-
-      if (sortedItems.length === 0) {
-        setMemoryTestItems([]);
-        setCurrentTestIndex(0);
-        setActiveTestSourceLabel(sourceLabel);
-        setActiveTestSourceType(sourceType);
-        resetSessionTracking(parentId, 0);
-        return;
-      }
-
-      let nextIndex = 0;
-
-      if (typeof startAtMemoryKey === 'number') {
-        nextIndex = sortedItems.findIndex((item) => {
-          const itemMemoryKey = Number.parseInt(String(item.memory_key ?? ''), 10);
-          return itemMemoryKey === startAtMemoryKey;
-        });
-
-        if (nextIndex === -1) {
-          setMemoryTestItems([]);
-          setCurrentTestIndex(0);
-          setActiveTestSourceLabel('');
-          setActiveTestSourceType(null);
-          resetSessionTracking(null, 0);
-          setMemoryKeyError(notFoundMessage ?? 'That memory key was not found in the selected list.');
-          return;
-        }
-      }
-
-      setMemoryTestItems(sortedItems);
-      setCurrentTestIndex(nextIndex);
-      setActiveTestSourceLabel(sourceLabel);
-      setActiveTestSourceType(sourceType);
-      resetSessionTracking(parentId, sortedItems.length);
     },
     [resetSessionTracking, sortMemoryItems],
   );
@@ -256,66 +270,32 @@ export default function ListTesterPage() {
     setShowMemoryName(false);
     resetSessionTracking(null, 0);
 
-    const { data, error } = await supabase
-      .from('memory_items')
-      .select('id,name')
-      .not('memory_list_key', 'is', null)
-      .ilike('name', `%${trimmed}%`)
-      .order('name', { ascending: true })
-      .limit(50);
-
-    setIsSearching(false);
-
-    if (error) {
+    try {
+      const data = await fetchMemoryListRoots(trimmed);
+      setResults(data ?? []);
+    } catch (error) {
       setSearchError('Search failed. Please try again.');
       setResults([]);
-      return;
+    } finally {
+      setIsSearching(false);
     }
-
-    setResults(data ?? []);
   }, [finalizeSession, resetSessionTracking, searchText]);
 
   const loadSubLists = React.useCallback(async (parentId: number) => {
     setIsLoadingSubLists(true);
     setSubLists([]);
 
-    const { data: directChildren, error: directChildrenError } = await supabase
-      .from('memory_items')
-      .select('id,name')
-      .eq('parent_id', parentId);
-
-    if (directChildrenError) {
-      setIsLoadingSubLists(false);
+    try {
+      const descendants = await getListDescendants(parentId);
+      const directSubLists = (descendants ?? []).filter(
+        (row: RootMemoryItem) => row.parent_id === parentId && Number(row.child_count ?? 0) > 0,
+      );
+      setSubLists(directSubLists);
+    } catch (error) {
       setSearchError('Could not load sub lists.');
-      return;
-    }
-
-    if (!directChildren || directChildren.length === 0) {
+    } finally {
       setIsLoadingSubLists(false);
-      return;
     }
-
-    const childIds = directChildren.map((row) => row.id);
-    const { data: grandchildrenRows, error: grandchildrenError } = await supabase
-      .from('memory_items')
-      .select('parent_id')
-      .in('parent_id', childIds);
-
-    setIsLoadingSubLists(false);
-
-    if (grandchildrenError) {
-      setSearchError('Could not load sub lists.');
-      return;
-    }
-
-    const childIdsWithChildren = new Set(
-      (grandchildrenRows ?? [])
-        .map((row) => row.parent_id)
-        .filter((id): id is number => id !== null),
-    );
-
-    const nestedSubLists = directChildren.filter((row) => childIdsWithChildren.has(row.id));
-    setSubLists(nestedSubLists);
   }, []);
 
   const handleSelectResult = React.useCallback(async (item: RootMemoryItem) => {
@@ -336,22 +316,18 @@ export default function ListTesterPage() {
     setShowMemoryName(false);
     resetSessionTracking(null, 0);
 
-    const { count, error } = await supabase
-      .from('memory_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('parent_id', item.id);
-
-    setIsLoadingCount(false);
-
-    if (error) {
+    try {
+      const descendants = await getListDescendants(item.id);
+      const directChildren = (descendants ?? []).filter((row: RootMemoryItem) => row.parent_id === item.id);
+      setSelectedChildCount(directChildren.length);
+      await loadSubLists(item.id);
+    } catch (error) {
       setSearchError('Could not load child count.');
       setSelectedChildCount(null);
       setIsLoadingSubLists(false);
-      return;
+    } finally {
+      setIsLoadingCount(false);
     }
-
-    setSelectedChildCount(count ?? 0);
-    await loadSubLists(item.id);
   }, [finalizeSession, loadSubLists, resetSessionTracking]);
 
   const handleSelectSubList = React.useCallback(async (item: RootMemoryItem) => {
@@ -362,14 +338,18 @@ export default function ListTesterPage() {
     setMemoryKeyError('');
     setShowMemoryName(false);
 
-    const { count, error } = await supabase
-      .from('memory_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('parent_id', item.id);
+    try {
+      const descendants = await getListDescendants(selectedRootItem?.id ?? 0);
+      const directChildren = (descendants ?? []).filter((row: RootMemoryItem) => row.parent_id === item.id);
+      setSelectedSubListChildCount(directChildren.length);
 
-    setIsLoadingSubListCount(false);
-
-    if (error) {
+      await loadMemoryTestItems({
+        listId: selectedRootItem?.id ?? item.list_id ?? item.id,
+        rootId: item.id,
+        sourceLabel: item.name ?? 'Unnamed',
+        sourceType: 'sublist',
+      });
+    } catch (error) {
       setSearchError('Could not load selected sub list child count.');
       setSelectedSubListChildCount(null);
       setMemoryTestItems([]);
@@ -377,17 +357,10 @@ export default function ListTesterPage() {
       setActiveTestSourceLabel('');
       setActiveTestSourceType(null);
       resetSessionTracking(null, 0);
-      return;
+    } finally {
+      setIsLoadingSubListCount(false);
     }
-
-    setSelectedSubListChildCount(count ?? 0);
-
-    await loadMemoryTestItems({
-      parentId: item.id,
-      sourceLabel: item.name ?? 'Unnamed',
-      sourceType: 'sublist',
-    });
-  }, [finalizeSession, loadMemoryTestItems, resetSessionTracking]);
+  }, [finalizeSession, loadMemoryTestItems, resetSessionTracking, selectedRootItem]);
 
   const handleStartFromMemoryKey = React.useCallback(async () => {
     if (!selectedRootItem) {
@@ -406,7 +379,8 @@ export default function ListTesterPage() {
     void finalizeSession();
 
     await loadMemoryTestItems({
-      parentId: selectedRootItem.id,
+      listId: selectedRootItem.id,
+      rootId: selectedRootItem.id,
       sourceLabel: `${selectedName} (starting from memory key ${parsedMemoryKey})`,
       sourceType: 'root',
       startAtMemoryKey: parsedMemoryKey,

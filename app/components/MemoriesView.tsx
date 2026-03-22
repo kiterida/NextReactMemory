@@ -3,7 +3,7 @@
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems, compareMemoryTreeItems, sortMemoryTreeNodes } from './memoryData';
+import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems, compareMemoryTreeItems, sortMemoryTreeNodes, createMemoryNode } from './memoryData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -37,12 +37,16 @@ type MemoryItem = {
   description?: string;
   rich_text?: string;
   parent_id?: string | null;
+  list_id?: string | null;
+  item_type?: string | null;
+  is_testable?: boolean;
   code_snippet?: string;
   memory_key?: string | number | null;
   row_order?: string | number | null;
   memory_image?: string;
   header_image?: string;
   starred?: boolean;
+  memory_list_key?: string | number | null;
 };
 
 export interface MemoryTreeItem {
@@ -51,12 +55,16 @@ export interface MemoryTreeItem {
   description?: string;
   rich_text?: string;
   parent_id?: string | null;
+  list_id?: string | null;
+  item_type?: string | null;
+  is_testable?: boolean;
   code_snippet?: string;
   memory_key?: string | number | null;
   row_order?: string | number | null;
   memory_image?: string;
   header_image?: string;
   starred?: boolean;
+  memory_list_key?: string | number | null;
   has_children?: boolean;   
   child_count?: number;
   isLoadingChildren?: boolean;
@@ -156,14 +164,16 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
   };
 
-  const handleSetAsMemoryList = async (itemId : string, bSet : string) => {
+  const handleSetAsMemoryList = async (itemId : string, bSet : boolean) => {
 
      const newListId = await toggleMemoryList(itemId,bSet);  
 
      if(newListId != null)
-      showMessage("Set to Memory List: memory_list_key: " + newListId);
-    else
+      showMessage("Set as Memory List root. memory_list_key: " + newListId);
+     else
       showMessage("Unset as Memory List");
+
+     await getSearchItemWithParents(itemId);
 
   }
 
@@ -262,7 +272,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!includesTarget) {
       const { data: focusedItem, error: focusedItemError } = await supabase
         .from('memory_items')
-        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, row_order, memory_image, header_image, starred')
+        .select('id, name, description, rich_text, parent_id, list_id, item_type, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
         .eq('id', targetId)
         .single();
 
@@ -273,7 +283,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
     if (path.length === 0) {
       console.log("path.length === 0,", roots);
-      setTreeData(sortMemoryTreeNodes(roots));
+      setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(roots)));
       return;
     }
 
@@ -339,7 +349,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     }
 
     if (requestVersion !== treeLoadVersionRef.current) return;
-    setTreeData(sortMemoryTreeNodes(mergedRoots));
+    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(mergedRoots)));
   }
 
   const getTreeData = async () => {
@@ -355,7 +365,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     //console.log("Tree data length = ", data.length)
 
     if (requestVersion !== treeLoadVersionRef.current) return;
-    setTreeData(sortMemoryTreeNodes(data ?? []));
+    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(data ?? [])));
     console.log("data = ", data);
     //console.log("Tree data fetched");
   };
@@ -379,6 +389,22 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     window.addEventListener("memory-list-created", handleMemoryListCreated);
     return () => {
       window.removeEventListener("memory-list-created", handleMemoryListCreated);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMemoryItemTypeUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ id?: string }>;
+      const updatedId = customEvent.detail?.id;
+      if (!updatedId) return;
+
+      focusTargetRef.current = String(updatedId);
+      getSearchItemWithParents(String(updatedId));
+    };
+
+    window.addEventListener("memory-item-type-updated", handleMemoryItemTypeUpdated);
+    return () => {
+      window.removeEventListener("memory-item-type-updated", handleMemoryItemTypeUpdated);
     };
   }, []);
 
@@ -523,7 +549,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     console.log("allItems: ", allItems);
     await updateMemoryItemParent(allItems, newParentId);
     const data = await fetchMemoryTree();
-    setTreeData(sortMemoryTreeNodes(data ?? []));
+    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(data ?? [])));
   };
 
   const handlePromoteToParentList = async (itemId: string) => {
@@ -638,7 +664,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       const { data, error } = await supabase
         .from('memory_items')
-        .select('id, name, description, rich_text, parent_id, code_snippet, memory_key, row_order, memory_image, header_image, starred')
+        .select('id, name, description, rich_text, parent_id, list_id, item_type, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
         .eq('id', normalizedTargetId)
         .single();
 
@@ -809,7 +835,17 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   };
   const handleCreateNewChild = async (parentId: string) => {
     try {
+      const newItem = await createMemoryNode({
+        parentId: (parentId || null) as any,
+        name: 'New Child Item',
+      } as any);
 
+      setExpandedItemId(parentId);
+      setNewItemId(newItem.id);
+      await refreshParentChildren(parentId);
+      return;
+
+      /*
       const parentIdValue = parentId === "null" ? null : parentId;
       let highestMemoryKey = 0;
       //console.log("handleCreateNewChild parentIdValue", parentIdValue)
@@ -872,7 +908,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       //   : 1;
 
       // Step 3: Insert the new child item with the new memory_key
-      const { error, data: newItem } = await supabase
+      const { error, data: legacyNewItem } = await supabase
         .from('memory_items')
         .insert([{
           name: 'New Child Item',
@@ -892,12 +928,15 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         console.error("Error creating new child item:", error);
       } else {
         setExpandedItemId(parentId);  // Set the expanded item to the newly created item's ID
-        setNewItemId(newItem.id);
+        setNewItemId(legacyNewItem.id);
 
         await refreshParentChildren(parentId);
       }
+      */
     } catch (err) {
       console.error("Error in handleCreateNewChild:", err);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      showMessage(`Failed to create child item: ${message}`, "error");
     }
   };
 
@@ -1016,6 +1055,25 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     return result;
   }
 
+  function dedupeTreeNodes(nodes: MemoryTreeItem[], seen = new Set<string>()): MemoryTreeItem[] {
+    const result: MemoryTreeItem[] = [];
+
+    for (const node of nodes) {
+      const nodeId = String(node.id);
+      if (seen.has(nodeId)) {
+        continue;
+      }
+
+      seen.add(nodeId);
+      result.push({
+        ...node,
+        children: Array.isArray(node.children) ? dedupeTreeNodes(node.children, seen) : node.children,
+      });
+    }
+
+    return result;
+  }
+
   const refreshParentChildren = React.useCallback(async (parentId: string | null) => {
     if (!parentId) {
       const data = await (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
@@ -1034,13 +1092,15 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       setTreeData((prev) =>
         sortMemoryTreeNodes(
-          updateNodeById(prev, parentId, (n) => ({
-            ...n,
-            isLoadingChildren: false,
-            children: Array.isArray(children) ? children : [],
-            child_count: Array.isArray(children) ? children.length : 0,
-            has_children: Array.isArray(children) ? children.length > 0 : false,
-          }))
+          dedupeTreeNodes(
+            updateNodeById(prev, parentId, (n) => ({
+              ...n,
+              isLoadingChildren: false,
+              children: Array.isArray(children) ? children : [],
+              child_count: Array.isArray(children) ? children.length : 0,
+              has_children: Array.isArray(children) ? children.length > 0 : false,
+            }))
+          )
         )
       );
     } catch (error) {
@@ -1077,11 +1137,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
         setTreeData((prev) =>
           sortMemoryTreeNodes(
-            updateNodeById(prev, itemId, (n) => ({
-              ...n,
-              isLoadingChildren: false,
-              children: Array.isArray(children) ? children : [],
-            }))
+            dedupeTreeNodes(
+              updateNodeById(prev, itemId, (n) => ({
+                ...n,
+                isLoadingChildren: false,
+                children: Array.isArray(children) ? children : [],
+              }))
+            )
           )
         );
       } catch (error) {
