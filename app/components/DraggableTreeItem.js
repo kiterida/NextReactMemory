@@ -71,8 +71,8 @@ const DraggableTreeItem = ({
     end: () => setIsDragging(false),
   });
 
-  const resetParentIdOnLeftDrop = async (draggedItem) => {
-    await onDropUpdate(draggedItem.id, null); // Set parent_id to null
+  const resetParentIdOnLeftDrop = (draggedItem) => {
+    onDropUpdate(draggedItem.id, null);
   };
 
   const [, drop] = useDrop({
@@ -86,19 +86,10 @@ const DraggableTreeItem = ({
       const dropOffset = monitor.getDifferenceFromInitialOffset();
 
       if (dropOffset && dropOffset.x < -100) {
-        // Only reset if the item was dropped well outside (not on another node)
-        console.log('Resetting parent_id to null due to leftward drop');
-        alert('resetParentIdOnLeftDrop');
         resetParentIdOnLeftDrop(draggedItem);
       } else {
-        console.log("onDropUpdate: draggedItem.id: ", draggedItem.id, " item.id: ", item.id);
-//        if(draggedItem.parent_id != null)
- //       {
+        if (String(draggedItem.parent_id ?? '') === String(item.id)) return;
           onDropUpdate(draggedItem.id, item.id);
- //       }else{
- //         onShowMessage("You can't drag & drop a parent Memory List.", "info");
- //       }
-        
       }
     }
     ,

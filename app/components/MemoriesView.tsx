@@ -3,12 +3,12 @@
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, fetchMemoryTree, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems, compareMemoryTreeItems, sortMemoryTreeNodes, createMemoryNode } from './memoryData';
+import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems, compareMemoryTreeItems, sortMemoryTreeNodes, createMemoryNode } from './memoryData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import { useTreeViewApiRef } from '@mui/x-tree-view/hooks';
-import { DndProvider } from 'react-dnd';
+import { DndProvider, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import DraggableTreeItem from './DraggableTreeItem';
 import { Box, Card, CardContent } from '@mui/material';
@@ -71,6 +71,50 @@ export interface MemoryTreeItem {
   // ... add any other fields your items have (like `title`, `starred`, etc.)
   children?: MemoryTreeItem[];
 }
+
+const TREE_ITEM_DND_TYPE = 'TREE_ITEM';
+
+const RootDropZone = ({
+  onDropToRoot,
+}: {
+  onDropToRoot: (draggedItemId: string) => void;
+}) => {
+  const [{ isOver }, dropRef] = useDrop(
+    () => ({
+      accept: TREE_ITEM_DND_TYPE,
+      drop: (draggedItem: { id: string }, monitor) => {
+        if (monitor.didDrop()) return;
+        onDropToRoot(String(draggedItem.id));
+      },
+      collect: (monitor) => ({
+        isOver: monitor.isOver({ shallow: true }),
+      }),
+    }),
+    [onDropToRoot]
+  );
+
+  return (
+    <Box
+      ref={(node: HTMLDivElement | null) => {
+        dropRef(node);
+      }}
+      sx={{
+        mb: 1,
+        px: 1.5,
+        py: 1,
+        border: '1px dashed',
+        borderColor: isOver ? 'primary.main' : 'divider',
+        borderRadius: 1,
+        bgcolor: isOver ? 'action.hover' : 'transparent',
+        color: 'text.secondary',
+        fontSize: '0.875rem',
+        transition: 'background-color 120ms ease, border-color 120ms ease',
+      }}
+    >
+      Drop here to move item to top level
+    </Box>
+  );
+};
 
 const MemoriesView = ({ filterStarred = false, focusId, singleListView }: MemoriesViewProps) => {
 
@@ -541,15 +585,54 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   }, [expandedItemId, newItemId]); // Runs when either treeData or expandedItemId changes
 
   const handleDropUpdate = async (draggedItemId: string, newParentId: string | null) => {
-    if (newParentId == "") {
-      newParentId = "";
+    const normalizedParentId = newParentId ? String(newParentId) : null;
+    const allItems = Array.from(new Set([...selectedItems, draggedItemId])).map(String);
+
+    const treeMoveIds = getTopLevelMoveIds(allItems, treeData);
+
+    if (treeMoveIds.length === 0) {
+      return;
     }
 
-    const allItems = Array.from(new Set([...selectedItems, draggedItemId]));
-    console.log("allItems: ", allItems);
-    await updateMemoryItemParent(allItems, newParentId);
-    const data = await fetchMemoryTree();
-    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(data ?? [])));
+    if (normalizedParentId && treeMoveIds.includes(normalizedParentId)) {
+      return;
+    }
+
+    const targetNode = normalizedParentId ? findNodeById(treeData, normalizedParentId) : undefined;
+    if (
+      targetNode &&
+      treeMoveIds.some((id) => {
+        const draggedNode = findNodeById(treeData, id);
+        return draggedNode ? nodeContainsId(draggedNode, String(targetNode.id)) : false;
+      })
+    ) {
+      showMessage("You can't drop an item into its own child branch.", "warning");
+      return;
+    }
+
+    const currentParentIds = new Set(
+      treeMoveIds
+        .map((id) => findNodeById(treeData, id)?.parent_id ?? null)
+        .map((id) => (id ? String(id) : null))
+    );
+
+    if (currentParentIds.size === 1 && currentParentIds.has(normalizedParentId)) {
+      return;
+    }
+
+    await updateMemoryItemParent(treeMoveIds, normalizedParentId);
+
+    setTreeData((prev) =>
+      sortMemoryTreeNodes(
+        dedupeTreeNodes(moveNodesInTree(prev, treeMoveIds, normalizedParentId))
+      )
+    );
+
+    setSelectedItem((prev) =>
+      prev && treeMoveIds.includes(String(prev.id))
+        ? { ...prev, parent_id: normalizedParentId }
+        : prev
+    );
   };
 
   const handlePromoteToParentList = async (itemId: string) => {
@@ -1029,6 +1112,104 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     return undefined;
   }
 
+  function nodeContainsId(node: MemoryTreeItem, targetId: string): boolean {
+    if (String(node.id) === String(targetId)) return true;
+    if (!Array.isArray(node.children)) return false;
+    return node.children.some((child) => nodeContainsId(child, targetId));
+  }
+
+  function cloneNodeWithParent(node: MemoryTreeItem, parentId: string | null): MemoryTreeItem {
+    return {
+      ...node,
+      parent_id: parentId,
+      children: Array.isArray(node.children)
+        ? node.children.map((child) => cloneNodeWithParent(child, String(node.id)))
+        : node.children,
+    };
+  }
+
+  function getTopLevelMoveIds(ids: string[], nodes: MemoryTreeItem[]): string[] {
+    const requestedIds = new Set(ids.map(String));
+
+    return ids
+      .map(String)
+      .filter((id) => {
+        const node = findNodeById(nodes, id);
+        if (!node) return false;
+
+        let currentParentId = node.parent_id ? String(node.parent_id) : null;
+        while (currentParentId) {
+          if (requestedIds.has(currentParentId)) {
+            return false;
+          }
+          const parentNode = findNodeById(nodes, currentParentId);
+          currentParentId = parentNode?.parent_id ? String(parentNode.parent_id) : null;
+        }
+
+        return true;
+      });
+  }
+
+  function insertNodesAtParent(
+    nodes: MemoryTreeItem[],
+    parentId: string | null,
+    newNodes: MemoryTreeItem[]
+  ): MemoryTreeItem[] {
+    if (parentId === null) {
+      return [...nodes, ...newNodes];
+    }
+
+    return nodes.map((node) => {
+      if (String(node.id) === String(parentId)) {
+        const nextChildren = Array.isArray(node.children)
+          ? [...node.children, ...newNodes]
+          : node.children;
+
+        return {
+          ...node,
+          children: nextChildren,
+          child_count: typeof node.child_count === 'number'
+            ? node.child_count + newNodes.length
+            : Array.isArray(nextChildren)
+              ? nextChildren.length
+              : newNodes.length,
+          has_children: true,
+        };
+      }
+
+      if (!node.children) {
+        return node;
+      }
+
+      return {
+        ...node,
+        children: insertNodesAtParent(node.children, parentId, newNodes),
+      };
+    });
+  }
+
+  function moveNodesInTree(
+    nodes: MemoryTreeItem[],
+    moveIds: string[],
+    newParentId: string | null
+  ): MemoryTreeItem[] {
+    const movingNodes = moveIds
+      .map((id) => findNodeById(nodes, id))
+      .filter((node): node is MemoryTreeItem => Boolean(node))
+      .map((node) => cloneNodeWithParent(node, newParentId));
+
+    const prunedTree = moveIds.reduce(
+      (currentNodes, id) => removeNodeById(currentNodes, id),
+      nodes
+    );
+
+    if (newParentId !== null && !findNodeById(prunedTree, newParentId)) {
+      return nodes;
+    }
+
+    return insertNodesAtParent(prunedTree, newParentId, movingNodes);
+  }
+
   function removeNodeById(nodes: MemoryTreeItem[], id: string): MemoryTreeItem[] {
     const result: MemoryTreeItem[] = [];
 
@@ -1221,6 +1402,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         }}
       >
         <DndProvider backend={HTML5Backend}>
+          <RootDropZone onDropToRoot={(draggedItemId) => handleDropUpdate(draggedItemId, null)} />
           <SimpleTreeView
             multiSelect
             apiRef={apiRef}
