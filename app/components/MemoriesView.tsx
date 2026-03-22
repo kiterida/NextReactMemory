@@ -10,7 +10,7 @@ import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import { useTreeViewApiRef } from '@mui/x-tree-view/hooks';
-import { DndProvider, useDrop } from 'react-dnd';
+import { DndProvider, useDrop, useDragLayer } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import DraggableTreeItem from './DraggableTreeItem';
 import { Box, Card, CardContent } from '@mui/material';
@@ -115,12 +115,20 @@ const normalizeTreeNode = (raw: any): MemoryTreeItem => {
     children: Array.isArray(raw?.children) ? raw.children.map((child: any) => normalizeTreeNode(child)) : raw?.children,
   };
 };
-
 const RootDropZone = ({
   onDropToRoot,
 }: {
   onDropToRoot: (draggedItemId: string) => void;
 }) => {
+  const isDraggingTreeItem = useDragLayer((monitor) => {
+    if (!monitor.isDragging()) {
+      return false;
+    }
+
+    const itemType = monitor.getItemType();
+    return itemType === TREE_ITEM_DND_TYPE || itemType === 'TREE_ITEM';
+  });
+
   const [{ isOver }, dropRef] = useDrop(
     () => ({
       accept: TREE_ITEM_DND_TYPE,
@@ -140,18 +148,33 @@ const RootDropZone = ({
       ref={(node: HTMLDivElement | null) => {
         dropRef(node);
       }}
-      sx={{
-        mb: 1,
-        px: 1.5,
-        py: 1,
+      sx={(theme) => ({
+        position: 'fixed',
+        top: 96,
+        left: 24,
+        zIndex: 1600,
+        px: 2,
+        py: 1.25,
         border: '1px dashed',
-        borderColor: isOver ? 'primary.main' : 'divider',
-        borderRadius: 1,
-        bgcolor: isOver ? 'action.hover' : 'transparent',
-        color: 'text.secondary',
+        borderColor: isOver ? theme.palette.primary.main : theme.palette.divider,
+        borderRadius: 1.5,
+        backgroundColor: isOver
+          ? theme.palette.background.paper
+          : theme.palette.mode === 'dark'
+            ? 'rgba(18, 18, 18, 0.96)'
+            : 'rgba(255, 255, 255, 0.92)',
+        boxShadow: isDraggingTreeItem ? theme.shadows[4] : 'none',
+        color: isOver
+          ? theme.palette.text.primary
+          : theme.palette.mode === 'dark'
+            ? theme.palette.grey[100]
+            : theme.palette.text.secondary,
         fontSize: '0.875rem',
-        transition: 'background-color 120ms ease, border-color 120ms ease',
-      }}
+        opacity: isDraggingTreeItem ? 1 : 0,
+        transform: isDraggingTreeItem ? 'translateY(0)' : 'translateY(-8px)',
+        pointerEvents: isDraggingTreeItem ? 'auto' : 'none',
+        transition: 'opacity 120ms ease, transform 120ms ease, border-color 120ms ease, background-color 120ms ease',
+      })}
     >
       Drop here to move item to top level
     </Box>
@@ -793,18 +816,30 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   };
 
   const performDelete = async (item: MemoryItem) => {
+    const treeNodeId = String(item.id);
+    const sourceItemId = String(item.source_item_id ?? item.id);
+
     if (item.is_linked && item.link_id) {
       await deleteMemoryItemLink(item.link_id);
-      setSelectedItem((prev) => (prev?.id === item.id ? null : prev));
-      setSelectedItems((prev) => prev.filter((id) => id !== item.id));
-      setTreeData((prev) => removeNodeById(prev, item.id));
+      setSelectedItem((prev) => (prev?.id === treeNodeId ? null : prev));
+      setSelectedItems((prev) => prev.filter((id) => id !== treeNodeId));
+      setTreeData((prev) => sortMemoryTreeNodes(removeNodeById(prev, treeNodeId)));
       return;
     }
 
-    await deleteDirectMemoryItemTree(item.source_item_id ?? item.id);
-    setSelectedItem(null);
-    setSelectedItems((prev) => prev.filter((id) => id !== item.id));
-    await getTreeData();
+    await deleteDirectMemoryItemTree(sourceItemId);
+    setSelectedItem((prev) => {
+      if (!prev) return prev;
+      return String(prev.source_item_id ?? prev.id) === sourceItemId ? null : prev;
+    });
+    setSelectedItems((prev) =>
+      prev.filter((id) => String(findNodeById(treeData, id)?.source_item_id ?? id) !== sourceItemId)
+    );
+    setTreeData((prev) =>
+      sortMemoryTreeNodes(
+        removeNodeById(prev, treeNodeId)
+      )
+    );
   };
 
   const countDescendants = async (itemId: string): Promise<number> => {
@@ -1692,3 +1727,4 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 };
 
 export default MemoriesView;
+
