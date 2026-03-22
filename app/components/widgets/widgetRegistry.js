@@ -2,9 +2,11 @@ import SchoolIcon from '@mui/icons-material/School';
 import HistoryIcon from '@mui/icons-material/History';
 import ChecklistIcon from '@mui/icons-material/Checklist';
 import PsychologyAltIcon from '@mui/icons-material/PsychologyAlt';
+import TimelineIcon from '@mui/icons-material/Timeline';
 import CurrentCoursesWidget from './CurrentCoursesWidget';
 import HistoryWidget from './HistoryWidget';
 import MemoryRevisionWidget from './MemoryRevisionWidget';
+import RevisionHistoryWidget from './RevisionHistoryWidget';
 import ToDoListWidget from './ToDoListWidget';
 
 export const widgetRegistry = {
@@ -48,6 +50,21 @@ export const widgetRegistry = {
     },
     defaultConfig: {
       maxItems: 5,
+    },
+  },
+  revision_history: {
+    label: 'Revision History',
+    description: 'Show revision history and accuracy for a selected memory list.',
+    icon: TimelineIcon,
+    component: RevisionHistoryWidget,
+    defaultTitle: 'Revision History',
+    defaultSize: {
+      width: 6,
+      height: 3,
+    },
+    defaultConfig: {
+      memoryItemId: '',
+      maxSessions: 5,
     },
   },
   todo_list: {

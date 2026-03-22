@@ -1,0 +1,118 @@
+Add a “Test History” feature to my Memory App List Tester flow.
+
+What I want
+From the List Tester page, when I use the Memory Test Form, I want to record revision history for each tested memory item.
+
+I need to record:
+- the memory list that was revised
+- each memory item that was revised
+- whether I answered each item correctly or incorrectly
+- the date/time of the revision session
+- the last revised date of a list should be queryable later
+
+Future goal
+This data will later be used for:
+- charts
+- visual graphs
+- accuracy reports
+- history over time
+- per-list and per-item reporting
+
+UI behavior
+On the Memory Test Form:
+- there is already a “Show Name” button
+- after clicking “Show Name”, show 2 new buttons:
+  - Tick = Correct
+  - X = Incorrect
+- when I click either button:
+  - save a result record to Supabase
+  - record the current memory item
+  - record the current memory list
+  - record whether it was correct
+  - record the current date/time
+- these buttons should only appear after the answer is revealed
+- after saving, continue to the next test item
+- reset the reveal state for the next item
+
+Please use MUI buttons/icons and match the current app styling.
+
+Database design
+Please implement this with a proper relational structure that supports future analytics.
+
+Create:
+1. memory_test_sessions
+- one row per test/revision session for a memory list
+
+Suggested fields:
+- id
+- memory_list_id
+- started_at
+- completed_at
+- total_items
+- correct_count
+- incorrect_count
+- created_at
+
+2. memory_test_results
+- one row per answered memory item in a session
+
+Suggested fields:
+- id
+- session_id
+- memory_item_id
+- was_correct
+- answered_at
+- created_at
+
+Requirements:
+- foreign keys
+- indexes
+- cascade delete where appropriate
+- follow existing Supabase conventions
+- create SQL migration file(s)
+- include RLS policies if the project uses them
+
+Implementation requirements
+Please inspect the existing code and integrate this into the real flow, not just mock examples.
+
+I want:
+- SQL migration(s)
+- frontend changes to the List Tester / Memory Test Form
+- helper functions for Supabase insert/update/query
+- proper error handling
+- disabled buttons during save
+- protection against double clicks / duplicate inserts
+- keep all existing behavior working
+
+Session behavior
+Please create or manage a session for the current list test.
+Recommended behavior:
+- create a session when the test starts, or lazily on first recorded answer
+- each Correct/Incorrect click inserts into memory_test_results
+- when the test ends, update the session totals and completed_at
+
+Last revised date
+I want the last revised date of a list to be available later.
+Preferred approach:
+- derive it from memory_test_sessions using the latest session date
+- do not rely on a single manually maintained field unless necessary
+
+Nice extras
+If suitable, also add:
+- summary at the end of the test: total correct / incorrect
+- helper functions for future reporting:
+  - getLastRevisedDate(listId)
+  - getListAccuracy(listId)
+  - getMemoryItemAccuracy(memoryItemId)
+
+Important
+- do not remove existing functionality
+- preserve the current List Tester flow
+- use clean, maintainable code
+- keep file structure consistent with the project
+- add comments where helpful
+
+At the end, explain:
+- what files were changed
+- what SQL was added
+- how the data model supports future charts/reports

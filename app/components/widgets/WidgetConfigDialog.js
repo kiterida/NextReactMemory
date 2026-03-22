@@ -67,7 +67,7 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
     let timeoutId;
 
     async function loadMemoryItems() {
-      if (!['current_courses', 'memory_revision'].includes(widgetType) || !open) {
+      if (!['current_courses', 'memory_revision', 'revision_history'].includes(widgetType) || !open) {
         return;
       }
 
@@ -101,7 +101,7 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
     let ignore = false;
 
     async function ensureSelectedMemoryItem() {
-      if (!open || !['current_courses', 'memory_revision'].includes(widgetType)) {
+      if (!open || !['current_courses', 'memory_revision', 'revision_history'].includes(widgetType)) {
         return;
       }
 
@@ -164,12 +164,16 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
     setError('');
 
     try {
-      if (['current_courses', 'memory_revision'].includes(widgetType) && !formState.config.memoryItemId) {
+      if (['current_courses', 'memory_revision', 'revision_history'].includes(widgetType) && !formState.config.memoryItemId) {
         throw new Error('Please select a memory item.');
       }
 
       if (widgetType === 'history' && Number(formState.config.maxItems) < 1) {
         throw new Error('Max items must be at least 1.');
+      }
+
+      if (widgetType === 'revision_history' && Number(formState.config.maxSessions) < 1) {
+        throw new Error('Max sessions must be at least 1.');
       }
 
       await onSave({
@@ -223,7 +227,7 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
             inputProps={{ min: 1 }}
           />
 
-          {['current_courses', 'memory_revision'].includes(widgetType) ? (
+          {['current_courses', 'memory_revision', 'revision_history'].includes(widgetType) ? (
             <Autocomplete
               options={memoryItemOptions}
               loading={memoryItemLoading}
@@ -241,8 +245,12 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Memory Item"
-                  helperText="Search by memory item name"
+                  label={widgetType === 'revision_history' ? 'Memory List' : 'Memory Item'}
+                  helperText={
+                    widgetType === 'revision_history'
+                      ? 'Search for the list you want to report on'
+                      : 'Search by memory item name'
+                  }
                 />
               )}
             />
@@ -255,6 +263,17 @@ export default function WidgetConfigDialog({ open, widgetType, initialValues = n
               value={formState.config.maxItems}
               onChange={(event) => handleConfigChange('maxItems', Number(event.target.value))}
               inputProps={{ min: 1, max: 50 }}
+            />
+          ) : null}
+
+          {widgetType === 'revision_history' ? (
+            <TextField
+              label="Max Sessions"
+              type="number"
+              value={formState.config.maxSessions}
+              onChange={(event) => handleConfigChange('maxSessions', Number(event.target.value))}
+              inputProps={{ min: 1, max: 20 }}
+              helperText="How many recent revision sessions to display"
             />
           ) : null}
         </Stack>
