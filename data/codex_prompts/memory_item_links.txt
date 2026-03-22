@@ -1,0 +1,192 @@
+I want to extend my existing React + Supabase Memory Core app to support linking an existing memory item from one list into another list, without duplicating the original memory_items row.
+
+Important context about my app:
+- My current app is built around the `memory_items` table.
+- The tree/list structure currently uses `parent_id`.
+- Ordering is very important in my app and is based on `memory_key`.
+- `memory_key` is essential to how my memory/revision system works, so linked items must have their own editable `memory_key` in the destination list.
+- I do NOT want to convert the whole app to a new architecture if it can be avoided.
+- I want a minimal, safe, incremental change that works with my current structure.
+
+Goal:
+- Keep `memory_items` as the main source of truth for actual content.
+- Add a new table called `memory_item_links` for linked appearances of existing items in other lists.
+- A linked item should appear in another list/tree location without duplicating the original item content.
+- The linked appearance must have its own `memory_key` in the destination list.
+- The original source item keeps its own original `memory_key`.
+- Editing the content should still edit the original `memory_items` row, not create duplicated content.
+- The linked appearance should be visually identifiable in the UI.
+
+Example:
+- Source list: "Course Notes"
+- Original memory_items row:
+  - id = 500
+  - parent_id = 100
+  - memory_key = 12
+  - name = "Blueprint Interfaces"
+- Destination list: "Unreal Engine Blueprints"
+- memory_item_links row:
+  - parent_item_id = 200
+  - child_item_id = 500
+  - memory_key = 3
+
+In the destination list, the linked item should appear at memory_key 3, even though the original source item still has memory_key 12 in its original location.
+
+What I want implemented:
+
+1. Database changes
+Create a new Supabase SQL migration file for a new table:
+
+Table: `memory_item_links`
+Columns:
+- `id` bigint generated identity primary key
+- `parent_item_id` bigint not null
+- `child_item_id` bigint not null
+- `memory_key` integer not null
+- `created_at` timestamptz default now()
+
+Foreign keys:
+- `parent_item_id` references `memory_items(id)` on delete cascade
+- `child_item_id` references `memory_items(id)` on delete cascade
+
+Constraints:
+- prevent duplicate links of the same child into the same parent if appropriate
+- add a unique constraint on (`parent_item_id`, `memory_key`) so linked items do not collide with ordering in that destination list
+- think carefully about whether (`parent_item_id`, `child_item_id`) should be unique; I would prefer to prevent duplicate links into the same parent unless there is a strong reason not to
+
+Indexes:
+- index on `parent_item_id`
+- index on `child_item_id`
+- index on (`parent_item_id`, `memory_key`)
+
+Also create RLS policies consistent with the rest of my app. Match the style/pattern already used in the project.
+
+2. Data access layer changes
+Update my existing data access code so I can:
+- create a new memory item link
+- fetch linked items for a parent item
+- update the linked item’s `memory_key`
+- delete a link without deleting the source memory item
+- detect whether an item displayed in a list is a direct child or a linked child
+
+Please add functions with clear names, such as:
+- `insertMemoryItemLink(parentItemId, childItemId, memoryKey)`
+- `getMemoryItemLinksByParent(parentItemId)`
+- `updateMemoryItemLinkMemoryKey(linkId, memoryKey)`
+- `deleteMemoryItemLink(linkId)`
+
+3. Tree/list query behavior
+I need my tree/list UI to show both:
+- direct child rows from `memory_items`
+- linked child rows from `memory_item_links`
+
+Important:
+- The displayed ordering in a list must still be based on `memory_key`
+- This means linked rows must be merged into the displayed child list together with normal child rows
+- The merged result should be sorted by `memory_key`
+
+For linked items:
+- the displayed content comes from the linked `memory_items` source row
+- but the displayed `memory_key` comes from the `memory_item_links.memory_key`
+- the UI data returned to components should include enough info to know whether a row is:
+  - a direct item
+  - a linked item
+
+I want a safe merged view model for the frontend, for example:
+- `isLinked: true/false`
+- `linkId: number | null`
+- `sourceItemId`
+- `parentId`
+- `memoryKey`
+- normal display fields like `name`, `description`, etc.
+
+Do not break the existing direct-child logic. Extend it carefully.
+
+4. UI changes
+Add a way in the app to link an existing item from one list into another list.
+
+I want a practical UX for this.
+Recommended approach:
+- from a list or item context menu, add an option like:
+  - "Link existing item here"
+- this opens a dialog
+- the dialog allows searching existing memory items
+- user selects an existing item
+- user chooses/enters the destination `memory_key`
+- saving creates a `memory_item_links` row
+
+The dialog should use MUI components and match the style of the rest of my app.
+
+Suggested UI components:
+- MUI Dialog
+- MUI Autocomplete or searchable list
+- TextField for `memory_key`
+- confirm/cancel buttons
+
+Validation:
+- prevent empty selection
+- prevent invalid memory_key
+- show a clear error if the chosen `memory_key` conflicts with an existing direct child or linked child in that same destination parent
+
+5. Editing behavior
+Very important:
+- linked items are not copies
+- when a linked item is opened/edited, edits should apply to the original `memory_items` row
+- deleting a linked item from a list should only remove the `memory_item_links` row
+- deleting the original source item should remove dependent links through cascade or handled logic
+
+Please make this behavior explicit in the code.
+
+6. Visual distinction in the UI
+Linked items should be visually identifiable in the tree/list UI.
+
+Add a subtle visual indicator, for example:
+- a link icon
+- a tooltip saying "Linked item"
+- optional text like "(linked)" if needed
+
+Do this in a clean way that does not clutter the interface.
+
+7. Memory key conflict rules
+This is critical:
+- my app’s ordering logic depends on `memory_key`
+- in a given displayed list/parent, both direct children and linked children share the same ordering space
+- so no two displayed children under the same parent should end up with the same `memory_key`
+
+Please implement logic to check conflicts against:
+- `memory_items` rows where `parent_id = currentParentId`
+- `memory_item_links` rows where `parent_item_id = currentParentId`
+
+I also want helper functions for checking whether a memory_key is available in a parent before insert/update.
+
+8. Keep changes incremental
+I am worried this is a big change, so please keep it as incremental as possible:
+- do not rewrite the entire app architecture
+- do not remove the existing `memory_items.parent_id` approach
+- add `memory_item_links` as an extension layer
+- preserve existing behavior for normal items
+- only touch the files needed for this feature
+
+9. Deliverables
+Please provide:
+- the Supabase SQL migration file
+- any needed SQL for indexes, constraints, and RLS
+- updated data access/helper functions
+- the React/MUI dialog component for linking an existing item
+- the UI integration points for context menu / actions
+- the merged child query logic
+- any type/interface updates if the project uses them
+- clear comments explaining the linked-item flow
+
+10. Safety / edge cases
+Handle these edge cases:
+- trying to link an item into the same parent where it already exists as a direct child
+- trying to create duplicate links to the same destination parent
+- memory_key conflicts in destination parent
+- deleting a link vs deleting the source item
+- displaying linked items correctly in sorted order
+- editing linked items should open/edit the original source item
+
+Please inspect my existing project structure first and fit this feature into the current codebase style instead of inventing a completely new architecture.
+
+Focus on a safe, minimal, production-ready implementation.

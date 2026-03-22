@@ -3,7 +3,9 @@
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, updateMemoryItemParent, updateMemoryItem, updateStarred, insertMultipleItems, compareMemoryTreeItems, sortMemoryTreeNodes, createMemoryNode } from './memoryData';
+import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, updateMemoryItemParent, updateStarred, insertMultipleItems, compareMemoryTreeItems, sortMemoryTreeNodes } from './memoryData';
+import LinkExistingMemoryItemDialog from './LinkExistingMemoryItemDialog';
+import { countDirectDescendants, createMemoryNodeWithSharedOrdering, deleteDirectMemoryItemTree, deleteMemoryItemLink, getNextMemoryKeyForParent, saveMemoryAppearance } from './memoryLinkData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -33,6 +35,11 @@ interface MemoriesViewProps {
 
 type MemoryItem = {
   id: string;
+  source_item_id?: string;
+  source_parent_id?: string | null;
+  link_id?: string | null;
+  is_linked?: boolean;
+  tree_parent_id?: string | null;
   name?: string;
   description?: string;
   rich_text?: string;
@@ -51,6 +58,11 @@ type MemoryItem = {
 
 export interface MemoryTreeItem {
   id: string;
+  source_item_id?: string;
+  source_parent_id?: string | null;
+  link_id?: string | null;
+  is_linked?: boolean;
+  tree_parent_id?: string | null;
   name?: string;
   description?: string;
   rich_text?: string;
@@ -73,6 +85,36 @@ export interface MemoryTreeItem {
 }
 
 const TREE_ITEM_DND_TYPE = 'TREE_ITEM';
+
+const getTreeNodeId = (raw: any) => {
+  if (raw?.is_linked && raw?.link_id !== null && raw?.link_id !== undefined) {
+    return `link-${raw.link_id}`;
+  }
+
+  return String(raw?.id);
+};
+
+const normalizeTreeNode = (raw: any): MemoryTreeItem => {
+  const sourceItemId = String(raw?.source_item_id ?? raw?.id);
+  const isLinked = Boolean(raw?.is_linked);
+
+  return {
+    ...raw,
+    id: getTreeNodeId(raw),
+    source_item_id: sourceItemId,
+    source_parent_id:
+      raw?.parent_id === null || raw?.parent_id === undefined ? null : String(raw.parent_id),
+    link_id: raw?.link_id === null || raw?.link_id === undefined ? null : String(raw.link_id),
+    is_linked: isLinked,
+    parent_id:
+      raw?.parent_id === null || raw?.parent_id === undefined ? null : String(raw.parent_id),
+    tree_parent_id:
+      raw?.parent_id === null || raw?.parent_id === undefined ? null : String(raw.parent_id),
+    has_children: isLinked ? false : Boolean(raw?.has_children),
+    child_count: isLinked ? 0 : Number(raw?.child_count ?? 0),
+    children: Array.isArray(raw?.children) ? raw.children.map((child: any) => normalizeTreeNode(child)) : raw?.children,
+  };
+};
 
 const RootDropZone = ({
   onDropToRoot,
@@ -180,6 +222,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteChildCount, setDeleteChildCount] = useState(0);
   const [deleteTargetItem, setDeleteTargetItem] = useState<MemoryItem | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkTargetItem, setLinkTargetItem] = useState<MemoryItem | null>(null);
+  const [defaultLinkMemoryKey, setDefaultLinkMemoryKey] = useState<number | null>(null);
 
 
   const [enableFocusItem, setEnableFocusItem] = useState(false);
@@ -209,15 +254,17 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   };
 
   const handleSetAsMemoryList = async (itemId : string, bSet : boolean) => {
+     const clickedItem = findNodeById(treeData, String(itemId));
+     const sourceItemId = clickedItem?.source_item_id ?? itemId;
 
-     const newListId = await toggleMemoryList(itemId,bSet);  
+     const newListId = await toggleMemoryList(sourceItemId,bSet);  
 
      if(newListId != null)
       showMessage("Set as Memory List root. memory_list_key: " + newListId);
      else
       showMessage("Unset as Memory List");
 
-     await getSearchItemWithParents(itemId);
+     await getSearchItemWithParents(sourceItemId);
 
   }
 
@@ -291,24 +338,11 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       fetchChildrenWithPath(targetFocusId),
     ]);
 
-    const normalizeNode = (raw: any): MemoryTreeItem => ({
-      ...raw,
-      id: String(raw.id),
-      parent_id: raw.parent_id === null || raw.parent_id === undefined ? null : String(raw.parent_id),
-      children: Array.isArray(raw.children)
-        ? raw.children.map((c: any) => ({
-            ...c,
-            id: String(c.id),
-            parent_id: c.parent_id === null || c.parent_id === undefined ? null : String(c.parent_id),
-          }))
-        : raw.children,
-    });
-
     const roots: MemoryTreeItem[] = Array.isArray(rootItems)
-      ? rootItems.map((r: any) => normalizeNode(r))
+      ? rootItems.map((r: any) => normalizeTreeNode(r))
       : [];
     const path: MemoryTreeItem[] = Array.isArray(pathItems)
-      ? pathItems.map((p: any) => normalizeNode(p))
+      ? pathItems.map((p: any) => normalizeTreeNode(p))
       : [];
 
     const targetId = String(targetFocusId);
@@ -321,7 +355,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         .single();
 
       if (!focusedItemError && focusedItem) {
-        path.push(normalizeNode(focusedItem));
+        path.push(normalizeTreeNode(focusedItem));
       }
     }
 
@@ -406,10 +440,11 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     const data = await (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
       singleListView ?? null
     );
+    const normalizedData = (data ?? []).map((item: any) => normalizeTreeNode(item));
     //console.log("Tree data length = ", data.length)
 
     if (requestVersion !== treeLoadVersionRef.current) return;
-    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(data ?? [])));
+    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(normalizedData)));
     console.log("data = ", data);
     //console.log("Tree data fetched");
   };
@@ -542,7 +577,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     }
 
     const ancestors = getAllAncestorIds(itemId, tree);
-    return ancestors.length === 0 ? String(node.id) : String(ancestors[0]);
+    const topLevelId = ancestors.length === 0 ? String(node.id) : String(ancestors[0]);
+    const topLevelNode = findNodeById(tree, topLevelId);
+    return topLevelNode ? String(topLevelNode.source_item_id ?? topLevelNode.id) : null;
   }
 
   useEffect(() => {
@@ -636,7 +673,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   };
 
   const handlePromoteToParentList = async (itemId: string) => {
-    await updateMemoryItemParent([itemId], null);
+    const clickedItem = findNodeById(treeData, String(itemId));
+    if (clickedItem?.is_linked) {
+      showMessage("Linked rows cannot be promoted because they only point to the source item.", "warning");
+      return;
+    }
+
+    await updateMemoryItemParent([clickedItem?.source_item_id ?? itemId], null);
     await getTreeData();
     showMessage("Item promoted to parent list.", "success");
   };
@@ -647,8 +690,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     //   showMessage("Single List View is only available for parent Memory Lists.", "warning");
     //   return;
     // }
-
-    router.push(`/singleListView?listId=${encodeURIComponent(String(itemId))}`);
+    router.push(`/singleListView?listId=${encodeURIComponent(String(clickedItem?.source_item_id ?? itemId))}`);
   };
 
   /* Message Types:
@@ -668,21 +710,64 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const handleSave = async () => {
     if (!selectedItem) return;
 
-    const { id, memory_key, row_order, name, memory_image, header_image, code_snippet, description, rich_text } = selectedItem;
-    const updatedItem = await updateMemoryItem(id, memory_key, row_order, name, memory_image, header_image, code_snippet, description, rich_text);
-    if (!updatedItem) return;
+    try {
+      const saveResult = await saveMemoryAppearance(selectedItem);
+      const sourceId = String(selectedItem.source_item_id ?? selectedItem.id);
 
-    setSelectedItem((prev) => (prev && prev.id === id ? { ...prev, ...updatedItem } : prev));
-    setTreeData((prev) =>
-      sortMemoryTreeNodes(
-        updateNodeById(prev, id, (n) => ({
-          ...n,
-          ...updatedItem,
-        }))
-      )
-    );
+      const updateSourceAcrossTree = (nodes: MemoryTreeItem[]): MemoryTreeItem[] =>
+        nodes.map((node) => ({
+          ...node,
+          ...(String(node.source_item_id ?? node.id) === sourceId
+            ? {
+                ...saveResult.sourceItem,
+                memory_key: node.is_linked ? node.memory_key : saveResult.sourceItem.memory_key,
+                row_order: node.is_linked ? node.row_order : saveResult.sourceItem.row_order,
+              }
+            : {}),
+          id: node.id,
+          source_item_id: node.source_item_id,
+          source_parent_id: node.source_parent_id,
+          link_id: node.link_id,
+          is_linked: node.is_linked,
+          tree_parent_id: node.tree_parent_id,
+          parent_id: node.parent_id,
+          children: Array.isArray(node.children) ? updateSourceAcrossTree(node.children) : node.children,
+        }));
 
-    showMessage("Save successful");
+      setSelectedItem((prev) =>
+        prev && prev.id === selectedItem.id
+          ? {
+              ...prev,
+              ...saveResult.sourceItem,
+              id: prev.id,
+              source_item_id: prev.source_item_id,
+              source_parent_id: prev.source_parent_id,
+              link_id: prev.link_id,
+              is_linked: prev.is_linked,
+              tree_parent_id: prev.tree_parent_id,
+              parent_id: prev.parent_id,
+              memory_key: saveResult.displayMemoryKey,
+              row_order: saveResult.displayRowOrder,
+            }
+          : prev
+      );
+
+      setTreeData((prev) =>
+        sortMemoryTreeNodes(
+          updateNodeById(updateSourceAcrossTree(prev), selectedItem.id, (node) => ({
+            ...node,
+            memory_key: saveResult.displayMemoryKey,
+            row_order: saveResult.displayRowOrder,
+          }))
+        )
+      );
+
+      showMessage(selectedItem.is_linked ? "Linked item saved and source content updated." : "Save successful");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("Error saving item:", error);
+      showMessage(`Failed to save item: ${message}`, "error");
+    }
   };
 
   const deleteItemAndChildren = async (itemId: string) => {
@@ -708,10 +793,18 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   };
 
   const performDelete = async (item: MemoryItem) => {
-    await deleteItemAndChildren(item.id);
+    if (item.is_linked && item.link_id) {
+      await deleteMemoryItemLink(item.link_id);
+      setSelectedItem((prev) => (prev?.id === item.id ? null : prev));
+      setSelectedItems((prev) => prev.filter((id) => id !== item.id));
+      setTreeData((prev) => removeNodeById(prev, item.id));
+      return;
+    }
+
+    await deleteDirectMemoryItemTree(item.source_item_id ?? item.id);
     setSelectedItem(null);
     setSelectedItems((prev) => prev.filter((id) => id !== item.id));
-    setTreeData((prev) => removeNodeById(prev, item.id));
+    await getTreeData();
   };
 
   const countDescendants = async (itemId: string): Promise<number> => {
@@ -770,7 +863,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
     try {
       showMessage("Checking database for child items. Please wait.", "info")
-      const descendants = await countDescendants(itemToDelete.id);
+      if (itemToDelete.is_linked) {
+        await performDelete(itemToDelete);
+        showMessage("Link removed.", "info")
+        return;
+      }
+
+      const descendants = await countDirectDescendants(itemToDelete.source_item_id ?? itemToDelete.id);
 
       if (descendants > 0) {
         setDeleteChildCount(descendants);
@@ -916,9 +1015,49 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     setConfirmDialogOpen(false);
     await refreshParentChildren(contextMenuItemId);
   };
+
+  const handleOpenLinkDialog = async (targetId: string) => {
+    const targetItem = findNodeById(treeData, String(targetId));
+    if (!targetItem) {
+      showMessage("Could not resolve the destination item.", "error");
+      return;
+    }
+
+    if (targetItem.is_linked) {
+      showMessage("Linking into a linked appearance is not supported in this incremental version.", "warning");
+      return;
+    }
+
+    try {
+      const nextMemoryKey = await getNextMemoryKeyForParent(targetItem.source_item_id ?? targetItem.id);
+      setDefaultLinkMemoryKey(nextMemoryKey);
+    } catch (error) {
+      console.error("Error fetching next memory key for link:", error);
+      setDefaultLinkMemoryKey(null);
+    }
+
+    setLinkTargetItem(targetItem as MemoryItem);
+    setLinkDialogOpen(true);
+  };
+
+  const handleCloseLinkDialog = () => {
+    setLinkDialogOpen(false);
+    setLinkTargetItem(null);
+    setDefaultLinkMemoryKey(null);
+  };
+
+  const handleLinkCreated = async () => {
+    if (!linkTargetItem) {
+      return;
+    }
+
+    await refreshParentChildren(linkTargetItem.id);
+    showMessage("Linked item added to this list.", "success");
+  };
+
   const handleCreateNewChild = async (parentId: string) => {
     try {
-      const newItem = await createMemoryNode({
+      const newItem = await createMemoryNodeWithSharedOrdering({
         parentId: (parentId || null) as any,
         name: 'New Child Item',
       } as any);
@@ -1002,7 +1141,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           rich_text: '',
           parent_id: parentId,
         }])
-        .select() // 👈 This tells Supabase to return the inserted row
+        .select() // Returns the inserted row
         .single();
 
       //console.log('newItem inserted = ', newItem);
@@ -1036,6 +1175,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           onDropUpdate={handleDropUpdate}
           onSelectItem={handleClick}
           onCreateNewChild={handleCreateNewChild}
+          onLinkExistingItemHere={handleOpenLinkDialog}
           onConfirmDialogBox={handleConfirmDialogBox}
           onDeleteItem={handleDelete}
           onShowMessage={showMessage}
@@ -1122,6 +1262,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     return {
       ...node,
       parent_id: parentId,
+      tree_parent_id: parentId,
       children: Array.isArray(node.children)
         ? node.children.map((child) => cloneNodeWithParent(child, String(node.id)))
         : node.children,
@@ -1134,8 +1275,8 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     return ids
       .map(String)
       .filter((id) => {
-        const node = findNodeById(nodes, id);
-        if (!node) return false;
+      const node = findNodeById(nodes, id);
+      if (!node || node.is_linked) return false;
 
         let currentParentId = node.parent_id ? String(node.parent_id) : null;
         while (currentParentId) {
@@ -1260,7 +1401,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       const data = await (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
         singleListView ?? null
       );
-      setTreeData(sortMemoryTreeNodes(data ?? []));
+      setTreeData(sortMemoryTreeNodes((data ?? []).map((item: any) => normalizeTreeNode(item))));
       return;
     }
 
@@ -1270,6 +1411,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
     try {
       const children = await fetchChildren(parentId);
+      const normalizedChildren = Array.isArray(children)
+        ? children.map((child: any) => normalizeTreeNode(child))
+        : [];
 
       setTreeData((prev) =>
         sortMemoryTreeNodes(
@@ -1277,9 +1421,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
             updateNodeById(prev, parentId, (n) => ({
               ...n,
               isLoadingChildren: false,
-              children: Array.isArray(children) ? children : [],
-              child_count: Array.isArray(children) ? children.length : 0,
-              has_children: Array.isArray(children) ? children.length > 0 : false,
+              children: normalizedChildren,
+              child_count: normalizedChildren.length,
+              has_children: normalizedChildren.length > 0,
             }))
           )
         )
@@ -1315,6 +1459,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       try {
         const children = await fetchChildren(itemId);
+        const normalizedChildren = Array.isArray(children)
+          ? children.map((child: any) => normalizeTreeNode(child))
+          : [];
 
         setTreeData((prev) =>
           sortMemoryTreeNodes(
@@ -1322,7 +1469,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
               updateNodeById(prev, itemId, (n) => ({
                 ...n,
                 isLoadingChildren: false,
-                children: Array.isArray(children) ? children : [],
+                children: normalizedChildren,
               }))
             )
           )
@@ -1463,13 +1610,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
                 justifyContent: 'center',
               }}
             >
-              <ButtonGroup variant="contained" sx={{ width: '100%' }}>
-                <Button onClick={handleSave} sx={{ width: '50%' }}>Save</Button>
-                <Button color="error" onClick={() => handleDelete()} sx={{ width: '50%' }}>
-                  Delete
-                </Button>
-              </ButtonGroup>
-            </Box>
+                <ButtonGroup variant="contained" sx={{ width: '100%' }}>
+                  <Button onClick={handleSave} sx={{ width: '50%' }}>Save</Button>
+                  <Button color="error" onClick={() => handleDelete()} sx={{ width: '50%' }}>
+                  {selectedItem?.is_linked ? 'Remove Link' : 'Delete'}
+                  </Button>
+                </ButtonGroup>
+              </Box>
           </>
         ) : (
           <Box sx={{ padding: 2 }}>Select an item to edit.</Box>
@@ -1532,6 +1679,14 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         </Button>
       </DialogActions>
     </Dialog>
+
+    <LinkExistingMemoryItemDialog
+      open={linkDialogOpen}
+      destinationItem={linkTargetItem}
+      defaultMemoryKey={defaultLinkMemoryKey}
+      onClose={handleCloseLinkDialog}
+      onLinked={handleLinkCreated}
+    />
     </>
   )
 };
