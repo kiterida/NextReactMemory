@@ -362,7 +362,7 @@ export default function Layout(props: { children: React.ReactNode }) {
       return <PageHeader title="" slots={{ toolbar: CustomPageToolbarComponent }} />;
     }
 
-    if (currentPathname.startsWith('/dashboards/')) {
+    if (currentPathname.startsWith('/dashboards/') || currentPathname === '/memories' || currentPathname === '/starredLists') {
       const breadcrumbs = activePage?.breadcrumbs ?? [];
 
       return (
@@ -371,26 +371,30 @@ export default function Layout(props: { children: React.ReactNode }) {
           alignItems="center"
           justifyContent="space-between"
           spacing={2}
-          sx={{ minHeight: 40 }}
+          sx={{ minHeight: 40, flexWrap: 'wrap' }}
         >
-          <Breadcrumbs aria-label="breadcrumb">
-            {breadcrumbs.map((item, index) =>
-              item.path ? (
-                <Link
-                  key={`${item.title}-${index}`}
-                  href={item.path}
-                  underline="hover"
-                  color="inherit"
-                >
-                  {item.title}
-                </Link>
-              ) : (
-                <Typography key={`${item.title}-${index}`} color="text.primary">
-                  {item.title}
-                </Typography>
-              )
-            )}
-          </Breadcrumbs>
+          {breadcrumbs.length > 0 ? (
+            <Breadcrumbs aria-label="breadcrumb">
+              {breadcrumbs.map((item, index) =>
+                item.path ? (
+                  <Link
+                    key={`${item.title}-${index}`}
+                    href={item.path}
+                    underline="hover"
+                    color="inherit"
+                  >
+                    {item.title}
+                  </Link>
+                ) : (
+                  <Typography key={`${item.title}-${index}`} color="text.primary">
+                    {item.title}
+                  </Typography>
+                )
+              )}
+            </Breadcrumbs>
+          ) : (
+            <Typography color="text.primary">{activePage?.title ?? ''}</Typography>
+          )}
 
           <Paper
             elevation={3}
@@ -427,7 +431,7 @@ export default function Layout(props: { children: React.ReactNode }) {
       }}
     >
       {isSingleListViewRoute ? (
-        <Box sx={{ ...contentSx, pt: '40px' }}>
+        <Box sx={contentSx}>
           {props.children}
         </Box>
       ) : (
@@ -438,5 +442,6 @@ export default function Layout(props: { children: React.ReactNode }) {
     </DashboardLayout>
   );
 }
+
 
 

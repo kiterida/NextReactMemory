@@ -158,12 +158,12 @@ const DraggableTreeItem = ({
             onClick={(event) => onSelectItem(event, item)}
             onContextMenu={handleContextMenu}
             sx={{
+              position: 'relative',
               display: 'flex',
-              justifyContent: 'space-between',
               alignItems: 'center',
               width: '100%',
               minHeight: '40px',
-              paddingRight: '8px',
+              paddingRight: '80px',
               paddingLeft: isDragging ? '200px' : '8px',
             }}
             onMouseEnter={() => setIsHovered(true)}
@@ -178,6 +178,7 @@ const DraggableTreeItem = ({
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
                 flexGrow: 1,
+                minWidth: 0,
               }}
             >
               {isLinkedItem ? (
@@ -195,36 +196,51 @@ const DraggableTreeItem = ({
                 {item.name} {isDragging && 'Dragging'} {isHovered && <>[ {getSubItemCount(item)} ]</>}
               </Box>
             </Box>
-            {isHovered && (
-              <div>
-                <Tooltip title={isLinkedItem ? 'Star source item' : 'Star List'}>
+            <Box
+              sx={{
+                position: 'absolute',
+                right: 8,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                opacity: isHovered ? 1 : 0,
+                pointerEvents: isHovered ? 'auto' : 'none',
+                transition: 'opacity 120ms ease',
+                bgcolor: 'background.paper',
+                borderRadius: 999,
+                boxShadow: isHovered ? 1 : 0,
+                px: 0.25,
+              }}
+            >
+              <Tooltip title={isLinkedItem ? 'Star source item' : 'Star List'}>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    const toggle = !item.starred;
+                    updateStarred(item.source_item_id ?? item.id, toggle);
+                    e.stopPropagation();
+                  }}
+                >
+                  {item.starred ? <Star fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+                </IconButton>
+              </Tooltip>
+              {!isLinkedItem ? (
+                <Tooltip title="Add Child Item">
                   <IconButton
                     onClick={(e) => {
-                      const toggle = !item.starred;
-                      updateStarred(item.source_item_id ?? item.id, toggle);
                       e.stopPropagation();
+                      onCreateNewChild(item.id);
                     }}
+                    color="primary"
+                    size="small"
                   >
-                    {item.starred ? <Star /> : <StarBorderIcon />}
+                    <AddIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
-                {!isLinkedItem ? (
-                  <Tooltip title="Add Child Item">
-                    <IconButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCreateNewChild(item.id);
-                      }}
-                      color="primary"
-                      size="small"
-                      sx={{ marginLeft: 'auto' }}
-                    >
-                      <AddIcon />
-                    </IconButton>
-                  </Tooltip>
-                ) : null}
-              </div>
-            )}
+              ) : null}
+            </Box>
           </Box>
         }
         style={{
@@ -338,5 +354,6 @@ const DraggableTreeItem = ({
 };
 
 export default DraggableTreeItem;
+
 
 
