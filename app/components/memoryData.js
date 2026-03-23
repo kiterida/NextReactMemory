@@ -466,7 +466,7 @@ export const searchMemoryItemsAdvanced = async (searchString, options = {}) => {
   return filtered;
 };
 
-export const fetchRootItems = async (singleListViewId = null) => {
+export const fetchRootItems = async (singleListViewId = null, filterStarred = false) => {
   if (singleListViewId !== null && singleListViewId !== undefined && singleListViewId !== '') {
     const listId = Number(singleListViewId);
     if (!Number.isFinite(listId)) {
@@ -487,6 +487,18 @@ export const fetchRootItems = async (singleListViewId = null) => {
     }
 
     return data ? [data] : [];
+  }
+
+  if (filterStarred) {
+    const { data, error } = await supabase
+      .rpc('get_starred_memory_lists');
+
+    if (error) {
+      console.log("Error: fetchRootItems failed: Reason = ", error);
+      return [];
+    }
+
+    return data ?? [];
   }
 
   const { data, error } = await supabase
@@ -1051,4 +1063,7 @@ export const toggleMemoryList = async (id, bSet) => {
     return null;
   }
 };
+
+
+
 

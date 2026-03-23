@@ -13,7 +13,7 @@ import { useTreeViewApiRef } from '@mui/x-tree-view/hooks';
 import { DndProvider, useDrop, useDragLayer } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import DraggableTreeItem from './DraggableTreeItem';
-import { Box, Card, CardContent } from '@mui/material';
+import { Backdrop, Box, Card, CardContent, CircularProgress, Typography } from '@mui/material';
 import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
 import ItemDetailsTab from './ItemDetailsTab';
@@ -239,6 +239,8 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const [showSnackBar, setShowSnackBar] = useState(false);
   const [snackBarMsg, setSnackBarMsg] = useState("");
   const [snackBarMsgType, setSnackBarMsgType] = useState<AlertColor>("success");
+  const [deleteProgressOpen, setDeleteProgressOpen] = useState(false);
+  const [deleteProgressMessage, setDeleteProgressMessage] = useState('');
 
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [contextMenuItemId, setContextMenuItemId] = useState<string | null>(null);
@@ -355,8 +357,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     }
 
     const [rootItems, pathItems] = await Promise.all([
-      (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
-        singleListView ?? null
+      (fetchRootItems as (singleListViewId?: string | null, filterStarred?: boolean) => Promise<MemoryTreeItem[]>)(
+        singleListView ?? null,
+        filterStarred
       ),
       fetchChildrenWithPath(targetFocusId),
     ]);
@@ -460,8 +463,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
    // const data = await fetchMemoryTree();
 
     // Just load the parent lists first
-    const data = await (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
-      singleListView ?? null
+    const data = await (fetchRootItems as (singleListViewId?: string | null, filterStarred?: boolean) => Promise<MemoryTreeItem[]>)(
+      singleListView ?? null,
+      filterStarred
     );
     const normalizedData = (data ?? []).map((item: any) => normalizeTreeNode(item));
     //console.log("Tree data length = ", data.length)
@@ -728,7 +732,17 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     setSnackBarMsg(msg);
     setShowSnackBar(true);
     
-  }
+  };
+
+  const showDeleteProgress = (message: string) => {
+    setDeleteProgressMessage(message);
+    setDeleteProgressOpen(true);
+  };
+
+  const hideDeleteProgress = () => {
+    setDeleteProgressOpen(false);
+    setDeleteProgressMessage('');
+  };
 
   const handleSave = async () => {
     if (!selectedItem) return;
@@ -897,13 +911,14 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!itemToDelete) return;
 
     try {
-      showMessage("Checking database for child items. Please wait.", "info")
       if (itemToDelete.is_linked) {
+        showDeleteProgress('Removing link. Please wait...');
         await performDelete(itemToDelete);
-        showMessage("Link removed.", "info")
+        showMessage('Link removed.', 'info');
         return;
       }
 
+      showDeleteProgress('Checking database for child items. Please wait...');
       const descendants = await countDirectDescendants(itemToDelete.source_item_id ?? itemToDelete.id);
 
       if (descendants > 0) {
@@ -912,11 +927,16 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         setDeleteDialogOpen(true);
         return;
       }
-      
+
+      showDeleteProgress('Deleting item. Please wait...');
       await performDelete(itemToDelete);
-      showMessage("Row deleted.", "info")
+      showMessage('Row deleted.', 'info');
     } catch (error) {
-      console.error("Error preparing delete:", error);
+      console.error('Error preparing delete:', error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      showMessage(`Failed to delete item: ${message}`, 'error');
+    } finally {
+      hideDeleteProgress();
     }
   };
 
@@ -930,12 +950,21 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!deleteTargetItem) return;
 
     const itemToDelete = deleteTargetItem;
-    showMessage("Deleting rows. Please wait...", "warning")
-    await performDelete(itemToDelete);
-    showMessage("Rows deleted.", "info")
-    setDeleteDialogOpen(false);
-    setDeleteTargetItem(null);
-    setDeleteChildCount(0);
+
+    try {
+      setDeleteDialogOpen(false);
+      showDeleteProgress('Deleting rows. Please wait...');
+      await performDelete(itemToDelete);
+      showMessage('Rows deleted.', 'info');
+      setDeleteTargetItem(null);
+      setDeleteChildCount(0);
+    } catch (error) {
+      console.error('Error deleting rows:', error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      showMessage(`Failed to delete rows: ${message}`, 'error');
+    } finally {
+      hideDeleteProgress();
+    }
   };
 
   // Open the confirm dialog box.
@@ -1433,8 +1462,9 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
   const refreshParentChildren = React.useCallback(async (parentId: string | null) => {
     if (!parentId) {
-      const data = await (fetchRootItems as (singleListViewId?: string | null) => Promise<MemoryTreeItem[]>)(
-        singleListView ?? null
+      const data = await (fetchRootItems as (singleListViewId?: string | null, filterStarred?: boolean) => Promise<MemoryTreeItem[]>)(
+        singleListView ?? null,
+        filterStarred
       );
       setTreeData(sortMemoryTreeNodes((data ?? []).map((item: any) => normalizeTreeNode(item))));
       return;
@@ -1659,6 +1689,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
 
       </Box>
+      <Backdrop
+        open={deleteProgressOpen}
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.modal + 1, flexDirection: 'column', gap: 2 }}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="body1">{deleteProgressMessage || 'Working...'}</Typography>
+      </Backdrop>
       <Snackbar
         open={showSnackBar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
@@ -1677,7 +1714,6 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
      <Dialog
         open={confirmDialogOpen}
-        onClose={cancelDeleteRevisionList}
     >
         <DialogTitle>{"Are you sure you want to insert 10 Items?"}</DialogTitle>
         <DialogContent>
@@ -1727,4 +1763,5 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 };
 
 export default MemoriesView;
+
 

@@ -30,6 +30,9 @@ create index if not exists memory_item_links_child_item_id_idx
 create index if not exists memory_item_links_parent_memory_key_idx
   on public.memory_item_links (parent_item_id, memory_key);
 
+create index if not exists memory_items_parent_id_idx
+  on public.memory_items (parent_id);
+
 alter table public.memory_item_links enable row level security;
 
 drop policy if exists "memory_item_links_select_anon" on public.memory_item_links;
@@ -312,7 +315,142 @@ as $$
     mi.id asc;
 $$;
 
-drop function if exists public.get_children(bigint);
+drop function if exists public.get_starred_memory_lists();
+create or replace function public.get_starred_memory_lists()
+returns table (
+  id bigint,
+  parent_id bigint,
+  list_id bigint,
+  item_type text,
+  is_testable boolean,
+  memory_key integer,
+  row_order integer,
+  name text,
+  memory_image text,
+  header_image text,
+  description text,
+  rich_text text,
+  code_snippet text,
+  starred boolean,
+  memory_list_key integer,
+  source_item_id bigint,
+  link_id bigint,
+  is_linked boolean,
+  child_count bigint,
+  has_children boolean
+)
+language sql
+stable
+as $$
+  with combined_child_counts as (
+    select
+      parent_ref.parent_id,
+      count(*)::bigint as child_count
+    from (
+      select mi.parent_id
+      from public.memory_items mi
+      where mi.parent_id is not null
+
+      union all
+
+      select mil.parent_item_id as parent_id
+      from public.memory_item_links mil
+    ) parent_ref
+    group by parent_ref.parent_id
+  )
+  select
+    mi.id,
+    mi.parent_id,
+    mi.list_id,
+    mi.item_type,
+    mi.is_testable,
+    mi.memory_key,
+    mi.row_order,
+    mi.name,
+    mi.memory_image,
+    mi.header_image,
+    mi.description,
+    mi.rich_text,
+    mi.code_snippet,
+    mi.starred,
+    mi.memory_list_key,
+    mi.id as source_item_id,
+    null::bigint as link_id,
+    false as is_linked,
+    coalesce(combined_child_counts.child_count, 0) as child_count,
+    (coalesce(combined_child_counts.child_count, 0) > 0) as has_children
+  from public.memory_items mi
+  left join combined_child_counts
+    on combined_child_counts.parent_id = mi.id
+  where mi.starred = true
+  order by
+    case
+      when coalesce(combined_child_counts.child_count, 0) > 0 then coalesce(mi.row_order, mi.memory_key, 2147483647)
+      else coalesce(mi.memory_key, mi.row_order, 2147483647)
+    end asc,
+    mi.memory_key asc nulls last,
+    mi.row_order asc nulls last,
+    mi.id asc;
+$$;
+
+drop function if exists public.count_memory_item_descendants(bigint);
+create or replace function public.count_memory_item_descendants(p_item_id bigint)
+returns bigint
+language sql
+stable
+as $$
+  with recursive descendants(id, path) as (
+    select
+      mi.id,
+      array[mi.id]::bigint[] as path
+    from public.memory_items mi
+    where mi.parent_id = p_item_id
+
+    union all
+
+    select
+      child.id,
+      d.path || child.id
+    from public.memory_items child
+    inner join descendants d
+      on child.parent_id = d.id
+    where not child.id = any(d.path)
+  )
+  select count(distinct id)::bigint
+  from descendants;
+$$;
+
+drop function if exists public.delete_memory_item_tree(bigint);
+create or replace function public.delete_memory_item_tree(p_item_id bigint)
+returns bigint
+language sql
+as $$
+  with recursive descendants(id, path) as (
+    select
+      mi.id,
+      array[mi.id]::bigint[] as path
+    from public.memory_items mi
+    where mi.id = p_item_id
+
+    union all
+
+    select
+      child.id,
+      d.path || child.id
+    from public.memory_items child
+    inner join descendants d
+      on child.parent_id = d.id
+    where not child.id = any(d.path)
+  ),
+  deleted as (
+    delete from public.memory_items
+    where id in (select distinct id from descendants)
+    returning id
+  )
+  select count(*)::bigint
+  from deleted;
+$$;
+
 create or replace function public.get_children(p_parent_id bigint)
 returns table (
   id bigint,
@@ -555,5 +693,8 @@ as $$
     fp.row_order asc nulls last,
     fp.id asc;
 $$;
+
+
+
 
 

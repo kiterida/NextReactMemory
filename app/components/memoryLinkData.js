@@ -27,6 +27,8 @@ const DISPLAYED_CHILD_ITEM_SELECT = `
   memory_list_key
 `;
 
+let hasWarnedAboutDescendantCountFallback = false;
+
 const mapDisplayedLinkRow = (row, childRow) => ({
   ...childRow,
   parent_id: row.parent_item_id,
@@ -509,23 +511,43 @@ export async function saveMemoryAppearance(selectedItem) {
 }
 
 export async function countDirectDescendants(itemId) {
-  let total = 0;
   const normalizedItemId = toRequiredInteger(itemId, 'Item id');
 
+  const { data, error } = await supabase.rpc('count_memory_item_descendants', {
+    p_item_id: normalizedItemId,
+  });
+
+  if (!error) {
+    return Number(data ?? 0);
+  }
+
+  const formattedRpcError = formatSupabaseError(error, '');
+  if (
+    !hasWarnedAboutDescendantCountFallback &&
+    formattedRpcError &&
+    formattedRpcError !== '{}'
+  ) {
+    console.warn(
+      `count_memory_item_descendants RPC unavailable, falling back to client walk: ${formattedRpcError}`
+    );
+    hasWarnedAboutDescendantCountFallback = true;
+  }
+
+  let total = 0;
   const walk = async (id) => {
-    const { data, error } = await supabase
+    const { data: rows, error: walkError } = await supabase
       .from('memory_items')
       .select('id')
       .eq('parent_id', id);
 
-    if (error) {
-      throw error;
+    if (walkError) {
+      throw walkError;
     }
 
-    const rows = data ?? [];
-    total += rows.length;
+    const children = rows ?? [];
+    total += children.length;
 
-    for (const child of rows) {
+    for (const child of children) {
       await walk(child.id);
     }
   };
@@ -537,22 +559,14 @@ export async function countDirectDescendants(itemId) {
 export async function deleteDirectMemoryItemTree(itemId) {
   const normalizedItemId = toRequiredInteger(itemId, 'Item id');
 
-  const { data: children } = await supabase
-    .from('memory_items')
-    .select('id')
-    .eq('parent_id', normalizedItemId);
-
-  for (const child of children ?? []) {
-    await deleteDirectMemoryItemTree(child.id);
-  }
-
-  const { error } = await supabase
-    .from('memory_items')
-    .delete()
-    .eq('id', normalizedItemId);
+  const { error } = await supabase.rpc('delete_memory_item_tree', {
+    p_item_id: normalizedItemId,
+  });
 
   if (error) {
     console.error('Error deleting memory item tree:', error);
     throw error;
   }
 }
+
+
