@@ -6,6 +6,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import LinkIcon from '@mui/icons-material/Link';
+import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -29,12 +30,15 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useDrag, useDrop } from 'react-dnd';
 import TodoItemDialog from './TodoItemDialog';
+import TodoTagManagerDialog from './TodoTagManagerDialog';
 import {
   createTodoItem,
   createTodoTag,
+  deleteTodoTag,
   deleteTodoItem,
   getTodoListWithItemsAndTags,
   reorderTodoItems,
+  updateTodoTag,
   updateTodoItem,
 } from './todoListQueries';
 import {
@@ -198,6 +202,7 @@ export default function ToDoListWidget({ widget }) {
   const [deleteSaving, setDeleteSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [itemDialogOpen, setItemDialogOpen] = React.useState(false);
+  const [tagManagerOpen, setTagManagerOpen] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState(null);
   const [createItemDefaults, setCreateItemDefaults] = React.useState(null);
   const [deletingItem, setDeletingItem] = React.useState(null);
@@ -258,6 +263,60 @@ export default function ToDoListWidget({ widget }) {
         tags: sortTodoTags([...(prev?.tags ?? []), createdTag]),
       }));
       return createdTag;
+    } finally {
+      setTagSaving(false);
+    }
+  };
+
+  const handleUpdateTag = async (tag, tagValues) => {
+    setTagSaving(true);
+
+    try {
+      const updatedTag = await updateTodoTag(tag.id, tagValues);
+      setTodoList((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          tags: sortTodoTags((prev.tags ?? []).map((entry) => (entry.id === updatedTag.id ? updatedTag : entry))),
+          items: (prev.items ?? []).map((item) => ({
+            ...item,
+            tags: sortTodoTags((item.tags ?? []).map((entry) => (entry.id === updatedTag.id ? updatedTag : entry))),
+            tagIds: (item.tags ?? []).map((entry) => (entry.id === updatedTag.id ? updatedTag.id : entry.id)),
+          })),
+        };
+      });
+      return updatedTag;
+    } finally {
+      setTagSaving(false);
+    }
+  };
+
+  const handleDeleteTag = async (tag) => {
+    setTagSaving(true);
+
+    try {
+      await deleteTodoTag(tag.id);
+      setTodoList((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          tags: sortTodoTags((prev.tags ?? []).filter((entry) => entry.id !== tag.id)),
+          items: (prev.items ?? []).map((item) => {
+            const nextTags = sortTodoTags((item.tags ?? []).filter((entry) => entry.id !== tag.id));
+            return {
+              ...item,
+              tags: nextTags,
+              tagIds: nextTags.map((entry) => entry.id),
+            };
+          }),
+        };
+      });
     } finally {
       setTagSaving(false);
     }
@@ -513,6 +572,15 @@ export default function ToDoListWidget({ widget }) {
             <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreateDialog}>
               Add
             </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<LocalOfferOutlinedIcon />}
+              onClick={() => setTagManagerOpen(true)}
+              disabled={!todoListId}
+            >
+              Manage Tags
+            </Button>
           </Stack>
         </Stack>
 
@@ -542,7 +610,7 @@ export default function ToDoListWidget({ widget }) {
           />
         ) : null}
 
-        {tagSaving ? <Alert severity="info">Saving new tag...</Alert> : null}
+        {tagSaving ? <Alert severity="info">Saving tag changes...</Alert> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
         {loading ? <CircularProgress size={24} /> : null}
 
@@ -602,6 +670,22 @@ export default function ToDoListWidget({ widget }) {
         }}
         onSave={editingItem ? handleUpdateItem : handleCreateItem}
         onCreateTag={handleCreateTag}
+      />
+
+      <TodoTagManagerDialog
+        open={tagManagerOpen}
+        tags={todoList?.tags ?? []}
+        saving={tagSaving}
+        onClose={() => {
+          if (tagSaving) {
+            return;
+          }
+
+          setTagManagerOpen(false);
+        }}
+        onCreateTag={handleCreateTag}
+        onUpdateTag={handleUpdateTag}
+        onDeleteTag={handleDeleteTag}
       />
 
       <Dialog open={Boolean(deletingItem)} onClose={deleteSaving ? undefined : handleCancelDelete} maxWidth="xs" fullWidth>

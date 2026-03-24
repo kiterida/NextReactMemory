@@ -126,6 +126,52 @@ export async function createTodoTag(todoListId, name, color = null) {
   return mapTodoTag(data);
 }
 
+export async function updateTodoTag(todoTagId, { name, color = null } = {}) {
+  if (!todoTagId) {
+    throw new Error('A tag is required to update it.');
+  }
+
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) {
+    throw new Error('Tag name is required.');
+  }
+
+  const payload = {
+    name: trimmedName,
+    color: color || null,
+  };
+
+  const { data, error } = await supabase
+    .from('memory_core_todo_tags')
+    .update(payload)
+    .eq('id', todoTagId)
+    .select(TODO_TAG_COLUMNS)
+    .single();
+
+  if (error) {
+    console.error('Error updating todo tag:', error);
+    throw error;
+  }
+
+  return mapTodoTag(data);
+}
+
+export async function deleteTodoTag(todoTagId) {
+  if (!todoTagId) {
+    throw new Error('A tag is required to delete it.');
+  }
+
+  const { error } = await supabase
+    .from('memory_core_todo_tags')
+    .delete()
+    .eq('id', todoTagId);
+
+  if (error) {
+    console.error('Error deleting todo tag:', error);
+    throw error;
+  }
+}
+
 export async function getTodoItemTags(todoItemId) {
   if (!todoItemId) {
     return [];
