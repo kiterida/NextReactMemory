@@ -56,9 +56,18 @@ type MemoryItem = {
   memory_list_key?: string | number | null;
 };
 
-type RichTextDraftGetter = () => {
+type ItemDetailsDraftGetter = () => {
   itemIdentity: string;
   richText: string;
+  fields: {
+    memory_key: string;
+    row_order: string;
+    name: string;
+    memory_image: string;
+    description: string;
+    code_snippet: string;
+    header_image: string;
+  };
 };
 
 export interface MemoryTreeItem {
@@ -260,7 +269,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const [enableFocusItem, setEnableFocusItem] = useState(false);
 
   const [expandedItems, setExpandedItems] = React.useState<string[]>([]);
-  const richTextDraftGetterRef = useRef<RichTextDraftGetter | null>(null);
+  const itemDetailsDraftGetterRef = useRef<ItemDetailsDraftGetter | null>(null);
 
 
   
@@ -732,13 +741,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 | 'success'
 | 'warning'
 */
-  const showMessage = (msg: string, type: AlertColor = "success") => {
+  const showMessage = React.useCallback((msg: string, type: AlertColor = "success") => {
 
     setSnackBarMsgType(type);
     setSnackBarMsg(msg);
     setShowSnackBar(true);
     
-  };
+  }, []);
 
   const showDeleteProgress = (message: string) => {
     setDeleteProgressMessage(message);
@@ -755,10 +764,14 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
     try {
       const selectedItemIdentity = String(selectedItem.source_item_id ?? selectedItem.id);
-      const currentRichTextDraft = richTextDraftGetterRef.current?.();
+      const currentDraft = itemDetailsDraftGetterRef.current?.();
       const itemToSave =
-        currentRichTextDraft && currentRichTextDraft.itemIdentity === selectedItemIdentity
-          ? { ...selectedItem, rich_text: currentRichTextDraft.richText }
+        currentDraft && currentDraft.itemIdentity === selectedItemIdentity
+          ? {
+              ...selectedItem,
+              ...currentDraft.fields,
+              rich_text: currentDraft.richText,
+            }
           : selectedItem;
 
       const saveResult = await saveMemoryAppearance(itemToSave);
@@ -1656,8 +1669,8 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
               selectedItem={selectedItem}
               setSelectedItem={setSelectedItem}
               onShowMessage={showMessage}
-              onRegisterRichTextDraftGetter={(getter: RichTextDraftGetter | null) => {
-                richTextDraftGetterRef.current = getter;
+              onRegisterRichTextDraftGetter={(getter: ItemDetailsDraftGetter | null) => {
+                itemDetailsDraftGetterRef.current = getter;
               }}
             />
 

@@ -57,9 +57,33 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
   const quillInstanceRef = React.useRef(null);
   const savedRangeRef = React.useRef(null);
   const headerImageInputRef = React.useRef(null);
+  const onShowMessageRef = React.useRef(onShowMessage);
   const pendingRichTextRef = React.useRef(selectedItem?.rich_text || '');
   const pendingRichTextItemIdentityRef = React.useRef(String(selectedItem?.id ?? selectedItem?.source_item_id ?? ''));
   const selectedItemIdentity = String(selectedItem?.id ?? selectedItem?.source_item_id ?? '');
+  const selectedItemRichText = selectedItem?.rich_text || '';
+  const selectedItemIdentityRef = React.useRef(selectedItemIdentity);
+  const selectedItemRef = React.useRef(selectedItem);
+  const buildTextDraft = React.useCallback((item) => ({
+    memory_key: item?.memory_key == null ? '' : String(item.memory_key),
+    row_order: item?.row_order == null ? '' : String(item.row_order),
+    name: item?.name || '',
+    memory_image: item?.memory_image || '',
+    description: item?.description || '',
+    code_snippet: item?.code_snippet || '',
+    header_image: item?.header_image || '',
+  }), []);
+  const [textDraft, setTextDraft] = React.useState(() => buildTextDraft(selectedItem));
+  const pendingTextDraftRef = React.useRef(buildTextDraft(selectedItem));
+  const pendingTextDraftItemIdentityRef = React.useRef(selectedItemIdentity);
+
+  React.useEffect(() => {
+    onShowMessageRef.current = onShowMessage;
+  }, [onShowMessage]);
+
+  React.useEffect(() => {
+    selectedItemRef.current = selectedItem;
+  }, [selectedItem]);
 
   const flushPendingRichText = React.useCallback(() => {
     if (pendingRichTextRef.current === undefined) {
@@ -84,6 +108,73 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
     });
   }, [setSelectedItem]);
 
+  const flushPendingTextDraft = React.useCallback(() => {
+    const pendingTextDraft = pendingTextDraftRef.current;
+    if (!pendingTextDraft) {
+      return;
+    }
+
+    setSelectedItem((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const currentPrevIdentity = String(prev?.id ?? prev?.source_item_id ?? '');
+      if (currentPrevIdentity !== pendingTextDraftItemIdentityRef.current) {
+        return prev;
+      }
+
+      let didChange = false;
+      const nextItem = { ...prev };
+
+      if ((prev.memory_key == null ? '' : String(prev.memory_key)) !== pendingTextDraft.memory_key) {
+        nextItem.memory_key = pendingTextDraft.memory_key;
+        didChange = true;
+      }
+
+      if ((prev.row_order == null ? '' : String(prev.row_order)) !== pendingTextDraft.row_order) {
+        nextItem.row_order = pendingTextDraft.row_order;
+        didChange = true;
+      }
+
+      if ((prev.name || '') !== pendingTextDraft.name) {
+        nextItem.name = pendingTextDraft.name;
+        didChange = true;
+      }
+
+      if ((prev.memory_image || '') !== pendingTextDraft.memory_image) {
+        nextItem.memory_image = pendingTextDraft.memory_image;
+        didChange = true;
+      }
+
+      if ((prev.description || '') !== pendingTextDraft.description) {
+        nextItem.description = pendingTextDraft.description;
+        didChange = true;
+      }
+
+      if ((prev.code_snippet || '') !== pendingTextDraft.code_snippet) {
+        nextItem.code_snippet = pendingTextDraft.code_snippet;
+        didChange = true;
+      }
+
+      if ((prev.header_image || '') !== pendingTextDraft.header_image) {
+        nextItem.header_image = pendingTextDraft.header_image;
+        didChange = true;
+      }
+
+      return didChange ? nextItem : prev;
+    });
+  }, [setSelectedItem]);
+
+  const updateTextDraftField = React.useCallback((field, value) => {
+    pendingTextDraftItemIdentityRef.current = selectedItemIdentityRef.current;
+    setTextDraft((prev) => {
+      const nextDraft = { ...prev, [field]: value };
+      pendingTextDraftRef.current = nextDraft;
+      return nextDraft;
+    });
+  }, []);
+
   const handleChange = (event, newValue) => {
     setValue(newValue);
   };
@@ -107,8 +198,13 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
   }, []);
 
   const applyHeaderImage = React.useCallback((imageUrl) => {
+    updateTextDraftField('header_image', imageUrl);
+    pendingTextDraftRef.current = {
+      ...pendingTextDraftRef.current,
+      header_image: imageUrl,
+    };
     setSelectedItem((prev) => ({ ...prev, header_image: imageUrl }));
-  }, [setSelectedItem]);
+  }, [setSelectedItem, updateTextDraftField]);
 
   const uploadHeaderImageFile = React.useCallback(async (file) => {
     if (!file || !file.type || !file.type.startsWith('image/')) {
@@ -121,11 +217,11 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
       applyHeaderImage(imageUrl);
     } catch (error) {
       console.error('Header image upload failed:', error);
-      onShowMessage?.(error instanceof Error ? error.message : 'Header image upload failed.', 'error');
+      onShowMessageRef.current?.(error instanceof Error ? error.message : 'Header image upload failed.', 'error');
     } finally {
       setHeaderImageUploading(false);
     }
-  }, [applyHeaderImage, onShowMessage, uploadImageToR2]);
+  }, [applyHeaderImage, uploadImageToR2]);
 
   const insertImageAtSelection = React.useCallback((imageUrl) => {
     const quill = quillInstanceRef.current;
@@ -193,13 +289,13 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
           insertImageAtSelection(imageUrl);
         } catch (error) {
           console.error('Image upload failed:', error);
-          onShowMessage?.(error instanceof Error ? error.message : 'Image upload failed.', 'error');
+          onShowMessageRef.current?.(error instanceof Error ? error.message : 'Image upload failed.', 'error');
         }
       };
 
       handleTextChange = () => {
         pendingRichTextRef.current = quill.root.innerHTML;
-        pendingRichTextItemIdentityRef.current = selectedItemIdentity;
+        pendingRichTextItemIdentityRef.current = selectedItemIdentityRef.current;
       };
 
       handleSelectionChange = (range) => {
@@ -271,22 +367,31 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
         quillInstanceRef.current.root.removeEventListener('drop', handleDrop, true);
       }
       flushPendingRichText();
+      flushPendingTextDraft();
       quillInstanceRef.current = null;
       setIsQuillReady(false);
     };
-  }, [flushPendingRichText, insertImageAtSelection, onShowMessage, setSelectedItem, uploadImageToR2]);
+  }, [flushPendingRichText, flushPendingTextDraft, insertImageAtSelection, setSelectedItem, uploadImageToR2]);
 
   React.useEffect(() => {
     const quill = quillInstanceRef.current;
     if (!quill || !isQuillReady || !selectedItemIdentity) return;
 
-    const nextRichText = selectedItem?.rich_text || '';
+    const nextRichText = selectedItemRichText;
     pendingRichTextRef.current = nextRichText;
     pendingRichTextItemIdentityRef.current = selectedItemIdentity;
     if (quill.root.innerHTML !== nextRichText) {
       quill.clipboard.dangerouslyPasteHTML(nextRichText, 'silent');
     }
-  }, [isQuillReady, selectedItemIdentity]);
+  }, [isQuillReady, selectedItemIdentity, selectedItemRichText]);
+
+  React.useEffect(() => {
+    selectedItemIdentityRef.current = selectedItemIdentity;
+    const nextTextDraft = buildTextDraft(selectedItemRef.current);
+    setTextDraft(nextTextDraft);
+    pendingTextDraftRef.current = nextTextDraft;
+    pendingTextDraftItemIdentityRef.current = selectedItemIdentity;
+  }, [buildTextDraft, selectedItemIdentity]);
 
   React.useEffect(() => {
     if (!onRegisterRichTextDraftGetter) {
@@ -294,8 +399,9 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
     }
 
     const getCurrentDraft = () => ({
-      itemIdentity: pendingRichTextItemIdentityRef.current,
+      itemIdentity: pendingTextDraftItemIdentityRef.current || pendingRichTextItemIdentityRef.current,
       richText: pendingRichTextRef.current ?? '',
+      fields: pendingTextDraftRef.current,
     });
 
     onRegisterRichTextDraftGetter(getCurrentDraft);
@@ -322,23 +428,26 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
           <TextField
             label="Memory Key"
-            value={selectedItem.memory_key || ''}
-            onChange={(e) => setSelectedItem({ ...selectedItem, memory_key: e.target.value })}
+            value={textDraft.memory_key}
+            onChange={(e) => updateTextDraftField('memory_key', e.target.value)}
+            onBlur={flushPendingTextDraft}
             fullWidth
             margin="normal"
           />
           <TextField
             label="Item Order"
-            value={selectedItem.row_order || ''}
-            onChange={(e) => setSelectedItem({ ...selectedItem, row_order: e.target.value })}
+            value={textDraft.row_order}
+            onChange={(e) => updateTextDraftField('row_order', e.target.value)}
+            onBlur={flushPendingTextDraft}
             fullWidth
             margin="normal"
           />
         </Stack>
         <TextField
           label="Memory Name"
-          value={selectedItem.name || ''}
-          onChange={(e) => setSelectedItem({ ...selectedItem, name: e.target.value })}
+          value={textDraft.name}
+          onChange={(e) => updateTextDraftField('name', e.target.value)}
+          onBlur={flushPendingTextDraft}
           fullWidth
           multiline
           rows={4}
@@ -346,8 +455,9 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
         />
         <TextField
           label="Memory Image"
-          value={selectedItem.memory_image || ''}
-          onChange={(e) => setSelectedItem({ ...selectedItem, memory_image: e.target.value })}
+          value={textDraft.memory_image}
+          onChange={(e) => updateTextDraftField('memory_image', e.target.value)}
+          onBlur={flushPendingTextDraft}
           fullWidth
           multiline
           rows={4}
@@ -358,8 +468,9 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
       <CustomTabPanel value={value} index={1}>
         <TextField
           label="Description"
-          value={selectedItem.description || ''}
-          onChange={(e) => setSelectedItem({ ...selectedItem, description: e.target.value })}
+          value={textDraft.description}
+          onChange={(e) => updateTextDraftField('description', e.target.value)}
+          onBlur={flushPendingTextDraft}
           fullWidth
           multiline
           minRows={12}
@@ -376,8 +487,9 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
       <CustomTabPanel value={value} index={2}>
         <TextField
           label="Code Snippet"
-          value={selectedItem.code_snippet || ''}
-          onChange={(e) => setSelectedItem({ ...selectedItem, code_snippet: e.target.value })}
+          value={textDraft.code_snippet}
+          onChange={(e) => updateTextDraftField('code_snippet', e.target.value)}
+          onBlur={flushPendingTextDraft}
           fullWidth
           multiline
           rows={4}
@@ -482,8 +594,9 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
 
           <TextField
             label="Header Image URL"
-            value={selectedItem.header_image || ''}
-            onChange={(e) => setSelectedItem({ ...selectedItem, header_image: e.target.value })}
+            value={textDraft.header_image}
+            onChange={(e) => updateTextDraftField('header_image', e.target.value)}
+            onBlur={flushPendingTextDraft}
             fullWidth
             margin="normal"
           />
