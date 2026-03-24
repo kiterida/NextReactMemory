@@ -56,6 +56,11 @@ type MemoryItem = {
   memory_list_key?: string | number | null;
 };
 
+type RichTextDraftGetter = () => {
+  itemIdentity: string;
+  richText: string;
+};
+
 export interface MemoryTreeItem {
   id: string;
   source_item_id?: string;
@@ -255,6 +260,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const [enableFocusItem, setEnableFocusItem] = useState(false);
 
   const [expandedItems, setExpandedItems] = React.useState<string[]>([]);
+  const richTextDraftGetterRef = useRef<RichTextDraftGetter | null>(null);
 
 
   
@@ -748,8 +754,15 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!selectedItem) return;
 
     try {
-      const saveResult = await saveMemoryAppearance(selectedItem);
-      const sourceId = String(selectedItem.source_item_id ?? selectedItem.id);
+      const selectedItemIdentity = String(selectedItem.source_item_id ?? selectedItem.id);
+      const currentRichTextDraft = richTextDraftGetterRef.current?.();
+      const itemToSave =
+        currentRichTextDraft && currentRichTextDraft.itemIdentity === selectedItemIdentity
+          ? { ...selectedItem, rich_text: currentRichTextDraft.richText }
+          : selectedItem;
+
+      const saveResult = await saveMemoryAppearance(itemToSave);
+      const sourceId = String(itemToSave.source_item_id ?? itemToSave.id);
 
       const updateSourceAcrossTree = (nodes: MemoryTreeItem[]): MemoryTreeItem[] =>
         nodes.map((node) => ({
@@ -772,7 +785,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         }));
 
       setSelectedItem((prev) =>
-        prev && prev.id === selectedItem.id
+        prev && prev.id === itemToSave.id
           ? {
               ...prev,
               ...saveResult.sourceItem,
@@ -791,7 +804,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       setTreeData((prev) =>
         sortMemoryTreeNodes(
-          updateNodeById(updateSourceAcrossTree(prev), selectedItem.id, (node) => ({
+          updateNodeById(updateSourceAcrossTree(prev), itemToSave.id, (node) => ({
             ...node,
             memory_key: saveResult.displayMemoryKey,
             row_order: saveResult.displayRowOrder,
@@ -799,7 +812,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         )
       );
 
-      showMessage(selectedItem.is_linked ? "Linked item saved and source content updated." : "Save successful");
+      showMessage(itemToSave.is_linked ? "Linked item saved and source content updated." : "Save successful");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("Error saving item:", error);
@@ -1639,7 +1652,14 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       >
         {selectedItem ? (
           <>
-            <ItemDetailsTab selectedItem={selectedItem} setSelectedItem={setSelectedItem} />
+            <ItemDetailsTab
+              selectedItem={selectedItem}
+              setSelectedItem={setSelectedItem}
+              onShowMessage={showMessage}
+              onRegisterRichTextDraftGetter={(getter: RichTextDraftGetter | null) => {
+                richTextDraftGetterRef.current = getter;
+              }}
+            />
 
             {selectedItem.description && (
               <Box sx={{ flexShrink: 0, overflow: 'auto', maxHeight: '400px', marginBottom: '10px' }}>
@@ -1763,5 +1783,6 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 };
 
 export default MemoriesView;
+
 
 

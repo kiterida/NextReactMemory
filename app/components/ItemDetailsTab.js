@@ -9,6 +9,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { R2ImageGalleryDialog } from './R2ImageGalleryButton';
+import MemoryItemWebLinksTab from './MemoryItemWebLinksTab';
 import 'quill/dist/quill.snow.css';
 
 function CustomTabPanel(props) {
@@ -44,19 +45,44 @@ function a11yProps(index) {
   };
 }
 
-const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
+const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegisterRichTextDraftGetter }) => {
   const [value, setValue] = React.useState(0);
   const [galleryOpen, setGalleryOpen] = React.useState(false);
   const [headerGalleryOpen, setHeaderGalleryOpen] = React.useState(false);
   const [headerImageUploading, setHeaderImageUploading] = React.useState(false);
   const [isHeaderDragActive, setIsHeaderDragActive] = React.useState(false);
+  const [isQuillReady, setIsQuillReady] = React.useState(false);
   const quillEditorRef = React.useRef(null);
   const quillToolbarRef = React.useRef(null);
   const quillInstanceRef = React.useRef(null);
   const savedRangeRef = React.useRef(null);
   const headerImageInputRef = React.useRef(null);
+  const pendingRichTextRef = React.useRef(selectedItem?.rich_text || '');
+  const pendingRichTextItemIdentityRef = React.useRef(String(selectedItem?.id ?? selectedItem?.source_item_id ?? ''));
+  const selectedItemIdentity = String(selectedItem?.id ?? selectedItem?.source_item_id ?? '');
 
-  //console.log('selected item = ', selectedItem);
+  const flushPendingRichText = React.useCallback(() => {
+    if (pendingRichTextRef.current === undefined) {
+      return;
+    }
+
+    setSelectedItem((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const currentPrevIdentity = String(prev?.id ?? prev?.source_item_id ?? '');
+      if (currentPrevIdentity !== pendingRichTextItemIdentityRef.current) {
+        return prev;
+      }
+
+      if ((prev.rich_text || '') === pendingRichTextRef.current) {
+        return prev;
+      }
+
+      return { ...prev, rich_text: pendingRichTextRef.current };
+    });
+  }, [setSelectedItem]);
 
   const handleChange = (event, newValue) => {
     setValue(newValue);
@@ -95,10 +121,11 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       applyHeaderImage(imageUrl);
     } catch (error) {
       console.error('Header image upload failed:', error);
+      onShowMessage?.(error instanceof Error ? error.message : 'Header image upload failed.', 'error');
     } finally {
       setHeaderImageUploading(false);
     }
-  }, [applyHeaderImage, uploadImageToR2]);
+  }, [applyHeaderImage, onShowMessage, uploadImageToR2]);
 
   const insertImageAtSelection = React.useCallback((imageUrl) => {
     const quill = quillInstanceRef.current;
@@ -166,17 +193,22 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
           insertImageAtSelection(imageUrl);
         } catch (error) {
           console.error('Image upload failed:', error);
+          onShowMessage?.(error instanceof Error ? error.message : 'Image upload failed.', 'error');
         }
       };
 
       handleTextChange = () => {
-        setSelectedItem((prev) => ({ ...prev, rich_text: quill.root.innerHTML }));
+        pendingRichTextRef.current = quill.root.innerHTML;
+        pendingRichTextItemIdentityRef.current = selectedItemIdentity;
       };
 
       handleSelectionChange = (range) => {
         if (range) {
           savedRangeRef.current = range;
+          return;
         }
+
+        flushPendingRichText();
       };
 
       handlePaste = (event) => {
@@ -216,6 +248,7 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       quill.root.addEventListener('dragover', handleDragOver, true);
       quill.root.addEventListener('drop', handleDrop, true);
       quillInstanceRef.current = quill;
+      setIsQuillReady(true);
     };
 
     initQuill();
@@ -237,19 +270,40 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       if (quillInstanceRef.current?.root && handleDrop) {
         quillInstanceRef.current.root.removeEventListener('drop', handleDrop, true);
       }
+      flushPendingRichText();
       quillInstanceRef.current = null;
+      setIsQuillReady(false);
     };
-  }, [insertImageAtSelection, setSelectedItem, uploadImageToR2]);
+  }, [flushPendingRichText, insertImageAtSelection, onShowMessage, setSelectedItem, uploadImageToR2]);
 
   React.useEffect(() => {
     const quill = quillInstanceRef.current;
-    if (!quill) return;
+    if (!quill || !isQuillReady || !selectedItemIdentity) return;
 
     const nextRichText = selectedItem?.rich_text || '';
+    pendingRichTextRef.current = nextRichText;
+    pendingRichTextItemIdentityRef.current = selectedItemIdentity;
     if (quill.root.innerHTML !== nextRichText) {
       quill.clipboard.dangerouslyPasteHTML(nextRichText, 'silent');
     }
-  }, [selectedItem?.rich_text]);
+  }, [isQuillReady, selectedItemIdentity]);
+
+  React.useEffect(() => {
+    if (!onRegisterRichTextDraftGetter) {
+      return undefined;
+    }
+
+    const getCurrentDraft = () => ({
+      itemIdentity: pendingRichTextItemIdentityRef.current,
+      richText: pendingRichTextRef.current ?? '',
+    });
+
+    onRegisterRichTextDraftGetter(getCurrentDraft);
+
+    return () => {
+      onRegisterRichTextDraftGetter(null);
+    };
+  }, [onRegisterRichTextDraftGetter]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -258,8 +312,9 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
           <Tab label="Item" {...a11yProps(0)} />
           <Tab label="Description" {...a11yProps(1)} />
           <Tab label="Code Snippet" {...a11yProps(2)} />
-          <Tab label="Header Image" {...a11yProps(3)} />
-          <Tab label="React-Quill" {...a11yProps(4)} />
+          <Tab label="Links" {...a11yProps(3)} />
+          <Tab label="Header Image" {...a11yProps(4)} />
+          <Tab label="React-Quill" {...a11yProps(5)} />
         </Tabs>
       </Box>
 
@@ -331,6 +386,10 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
       </CustomTabPanel>
 
       <CustomTabPanel value={value} index={3}>
+        <MemoryItemWebLinksTab selectedItem={selectedItem} onShowMessage={onShowMessage} />
+      </CustomTabPanel>
+
+      <CustomTabPanel value={value} index={4}>
         <Stack spacing={2}>
           {selectedItem.header_image ? (
             <Box
@@ -431,7 +490,7 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
         </Stack>
       </CustomTabPanel>
 
-      <CustomTabPanel value={value} index={4}>
+      <CustomTabPanel value={value} index={5}>
         <Box
           className="ql-toolbar ql-snow"
           ref={quillToolbarRef}
@@ -488,3 +547,8 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem }) => {
 };
 
 export default ItemDetailsTab;
+
+
+
+
+

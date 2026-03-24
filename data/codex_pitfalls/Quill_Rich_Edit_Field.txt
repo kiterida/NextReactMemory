@@ -1,0 +1,30 @@
+The root problem was that React-Quill is not a normal controlled text field.
+
+What went wrong:
+
+the editor was initialized once, but the selected item kept changing underneath it
+when we updated selectedItem.rich_text on every Quill change, React rerendered the parent immediately
+another effect was also pushing selectedItem.rich_text back into Quill
+that created a feedback loop:
+type in Quill
+update React state
+rerender parent
+rehydrate Quill from state
+cursor/focus breaks, or stale text gets pushed into the wrong item
+Why the behavior got weird:
+
+Quill owns its own DOM and selection state
+if you keep forcing HTML back into it while the user is typing, it loses cursor position or focus
+if you buffer text locally but don’t tie that buffer to the currently selected item, the previous item’s draft can get flushed into the next item
+What fixed it:
+
+load Quill from database-backed selectedItem.rich_text only when the selected item changes
+do not rehydrate Quill on every keystroke
+keep in-progress Quill text in a local ref while typing
+only flush that buffered text back to React at safer times
+associate buffered rich text with the item identity so drafts from item A cannot be written into item B
+A good prompt note for next time:
+“Do not treat Quill like a fully controlled input. Load content only when the selected record changes. Do not push state back into Quill on every keystroke. Keep draft editor content local while typing, and make sure any buffered draft is tied to the active item identity so switching records cannot leak text across items.”
+
+An even shorter version:
+“For Quill editors, avoid controlled rerender loops. Hydrate on item change only, keep typing local, and scope pending draft state to the active item id.”

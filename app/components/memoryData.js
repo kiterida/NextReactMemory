@@ -45,6 +45,16 @@ const DEFAULT_MEMORY_ITEM_SELECT = `
 `;
 
 const MAX_SORT_VALUE = Number.MAX_SAFE_INTEGER;
+const MEMORY_ITEM_WEB_LINK_SELECT = `
+  id,
+  memory_item_id,
+  link_heading,
+  url,
+  description,
+  image_url,
+  row_order,
+  created_at
+`;
 
 const toSortableNumber = (value) => {
   const numericValue = Number(value);
@@ -207,6 +217,183 @@ const toNullableNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const toNullableInteger = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    throw new Error('Memory key must be a whole number.');
+  }
+
+  return parsed;
+};
+
+const formatSupabaseError = (error, fallbackMessage) => {
+  if (!error) {
+    return fallbackMessage;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  const pieces = [error.message, error.details, error.hint, error.code]
+    .filter((piece) => typeof piece === 'string' && piece.trim().length > 0);
+
+  if (pieces.length > 0) {
+    return pieces.join(' | ');
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch (_jsonError) {
+    return fallbackMessage;
+  }
+};
+
+const normalizeMemoryItemWebLinkPayload = (payload, options = {}) => {
+  const normalizedMemoryItemId = toNullableNumber(payload?.memory_item_id);
+
+  if (!options.allowMissingMemoryItemId && normalizedMemoryItemId === null) {
+    throw new Error('Memory item id is required.');
+  }
+
+  const normalizedHeading = String(payload?.link_heading ?? '').trim();
+  if (!options.allowPartial && normalizedHeading.length === 0) {
+    throw new Error('Heading is required.');
+  }
+
+  const normalizedUrl = String(payload?.url ?? '').trim();
+  if (!options.allowPartial && normalizedUrl.length === 0) {
+    throw new Error('URL is required.');
+  }
+
+  const normalizedDescription = payload?.description === null || payload?.description === undefined
+    ? null
+    : String(payload.description).trim() || null;
+  const normalizedImageUrl = payload?.image_url === null || payload?.image_url === undefined
+    ? null
+    : String(payload.image_url).trim() || null;
+
+  return {
+    memory_item_id: normalizedMemoryItemId,
+    link_heading: normalizedHeading,
+    url: normalizedUrl,
+    description: normalizedDescription,
+    image_url: normalizedImageUrl,
+    row_order: Object.prototype.hasOwnProperty.call(payload ?? {}, 'row_order')
+      ? toNullableInteger(payload.row_order)
+      : undefined,
+  };
+};
+
+export async function getMemoryItemWebLinks(memoryItemId) {
+  const normalizedMemoryItemId = toNullableNumber(memoryItemId);
+  if (normalizedMemoryItemId === null) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('memory_item_web_links')
+    .select(MEMORY_ITEM_WEB_LINK_SELECT)
+    .eq('memory_item_id', normalizedMemoryItemId)
+    .order('row_order', { ascending: true, nullsFirst: false })
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching memory item web links:', error);
+    throw new Error(formatSupabaseError(error, 'Failed to fetch memory item web links.'));
+  }
+
+  return [...(data ?? [])].sort((a, b) => {
+    const aValue = a.row_order === null || a.row_order === undefined ? MAX_SORT_VALUE : Number(a.row_order);
+    const bValue = b.row_order === null || b.row_order === undefined ? MAX_SORT_VALUE : Number(b.row_order);
+
+    if (aValue !== bValue) {
+      return aValue - bValue;
+    }
+
+    return Number(a.id) - Number(b.id);
+  });
+}
+
+export async function insertMemoryItemWebLink(link) {
+  const payload = normalizeMemoryItemWebLinkPayload(link);
+
+  const { data, error } = await supabase
+    .from('memory_item_web_links')
+    .insert({
+      memory_item_id: payload.memory_item_id,
+      link_heading: payload.link_heading,
+      url: payload.url,
+      description: payload.description,
+      image_url: payload.image_url,
+      row_order: payload.row_order,
+    })
+    .select(MEMORY_ITEM_WEB_LINK_SELECT)
+    .single();
+
+  if (error) {
+    console.error('Error inserting memory item web link:', error);
+    throw new Error(formatSupabaseError(error, 'Failed to add memory item web link.'));
+  }
+
+  return data;
+}
+
+export async function updateMemoryItemWebLink(id, updates) {
+  const normalizedId = toNullableNumber(id);
+  if (normalizedId === null) {
+    throw new Error('Web link id is required.');
+  }
+
+  const payload = normalizeMemoryItemWebLinkPayload(updates, {
+    allowMissingMemoryItemId: true,
+    allowPartial: false,
+  });
+
+  const updatePayload = {
+    link_heading: payload.link_heading,
+    url: payload.url,
+    description: payload.description,
+    image_url: payload.image_url,
+    row_order: payload.row_order,
+  };
+
+  const { data, error } = await supabase
+    .from('memory_item_web_links')
+    .update(updatePayload)
+    .eq('id', normalizedId)
+    .select(MEMORY_ITEM_WEB_LINK_SELECT)
+    .single();
+
+  if (error) {
+    console.error('Error updating memory item web link:', error);
+    throw new Error(formatSupabaseError(error, 'Failed to update memory item web link.'));
+  }
+
+  return data;
+}
+
+export async function deleteMemoryItemWebLink(id) {
+  const normalizedId = toNullableNumber(id);
+  if (normalizedId === null) {
+    throw new Error('Web link id is required.');
+  }
+
+  const { error } = await supabase
+    .from('memory_item_web_links')
+    .delete()
+    .eq('id', normalizedId);
+
+  if (error) {
+    console.error('Error deleting memory item web link:', error);
+    throw new Error(formatSupabaseError(error, 'Failed to delete memory item web link.'));
+  }
+}
 
 const getDefaultNodeTypeForParent = (parentItem) => {
   if (!parentItem) {
@@ -1063,6 +1250,10 @@ export const toggleMemoryList = async (id, bSet) => {
     return null;
   }
 };
+
+
+
+
 
 
 
