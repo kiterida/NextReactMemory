@@ -7,6 +7,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import LinkIcon from '@mui/icons-material/Link';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -21,11 +23,10 @@ import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
+import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useDrag, useDrop } from 'react-dnd';
@@ -196,6 +197,8 @@ export default function ToDoListWidget({ widget }) {
   const [todoList, setTodoList] = React.useState(null);
   const [viewMode, setViewMode] = React.useState(FILTER_OPTIONS.active);
   const [tagFilterId, setTagFilterId] = React.useState(ALL_TAG_FILTER);
+  const [showTagChips, setShowTagChips] = React.useState(false);
+  const [tagMenuAnchorEl, setTagMenuAnchorEl] = React.useState(null);
   const [loading, setLoading] = React.useState(Boolean(todoListId));
   const [saving, setSaving] = React.useState(false);
   const [tagSaving, setTagSaving] = React.useState(false);
@@ -213,6 +216,8 @@ export default function ToDoListWidget({ widget }) {
   React.useEffect(() => {
     todoListRef.current = todoList;
   }, [todoList]);
+
+  const isTagMenuOpen = Boolean(tagMenuAnchorEl);
 
   const loadTodoList = React.useCallback(async () => {
     if (!todoListId) {
@@ -536,55 +541,123 @@ export default function ToDoListWidget({ widget }) {
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={viewMode}
-              onChange={(_, nextValue) => {
-                if (nextValue) {
-                  setViewMode(nextValue);
-                }
-              }}
-              aria-label="Filter to do items"
-            >
-              <ToggleButton value={FILTER_OPTIONS.active}>Active</ToggleButton>
-              <ToggleButton value={FILTER_OPTIONS.completed}>Completed</ToggleButton>
-              <ToggleButton value={FILTER_OPTIONS.all}>All</ToggleButton>
-            </ToggleButtonGroup>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            alignItems="center"
+            flexWrap="wrap"
+            useFlexGap
+            sx={{
+              '& .MuiIconButton-root': {
+                p: 0.5,
+              },
+              '& .MuiSvgIcon-root': {
+                fontSize: 20,
+              },
+              '& .MuiTextField-root': {
+                minWidth: 110,
+              },
+              '& .MuiInputBase-root': {
+                height: 34,
+                fontSize: '0.875rem',
+              },
+              '& .MuiInputLabel-root': {
+                fontSize: '0.8rem',
+              },
+            }}
+          >
+            <Tooltip title="Add to do item">
+              <span>
+                <IconButton size="small" color="primary" onClick={openCreateDialog} aria-label="Add to do item">
+                  <AddIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
 
             <TextField
               select
               size="small"
-              label="Tag"
-              value={tagFilterId}
-              onChange={(event) => setTagFilterId(event.target.value)}
-              sx={{ minWidth: 160 }}
+              label="Status"
+              value={viewMode}
+              onChange={(event) => setViewMode(event.target.value)}
+              sx={{ minWidth: 104 }}
             >
-              <MenuItem value={ALL_TAG_FILTER}>All</MenuItem>
+              <MenuItem value={FILTER_OPTIONS.active}>Active</MenuItem>
+              <MenuItem value={FILTER_OPTIONS.completed}>Completed</MenuItem>
+              <MenuItem value={FILTER_OPTIONS.all}>All</MenuItem>
+            </TextField>
+
+            <Tooltip title="Filter by Tag">
+              <span>
+                <IconButton
+                  size="small"
+                  color={tagFilterId === ALL_TAG_FILTER ? 'default' : 'primary'}
+                  onClick={(event) => setTagMenuAnchorEl(event.currentTarget)}
+                  aria-label="Filter by Tag"
+                >
+                  <LocalOfferOutlinedIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Menu
+              anchorEl={tagMenuAnchorEl}
+              open={isTagMenuOpen}
+              onClose={() => setTagMenuAnchorEl(null)}
+            >
+              <MenuItem
+                selected={tagFilterId === ALL_TAG_FILTER}
+                onClick={() => {
+                  setTagFilterId(ALL_TAG_FILTER);
+                  setTagMenuAnchorEl(null);
+                }}
+              >
+                All
+              </MenuItem>
               {(todoList?.tags ?? []).map((tag) => (
-                <MenuItem key={tag.id} value={String(tag.id)}>
+                <MenuItem
+                  key={tag.id}
+                  selected={String(tag.id) === String(tagFilterId)}
+                  onClick={() => {
+                    setTagFilterId(String(tag.id));
+                    setTagMenuAnchorEl(null);
+                  }}
+                >
                   {tag.name}
                 </MenuItem>
               ))}
-            </TextField>
+            </Menu>
 
-            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreateDialog}>
-              Add
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<LocalOfferOutlinedIcon />}
-              onClick={() => setTagManagerOpen(true)}
-              disabled={!todoListId}
-            >
-              Manage Tags
-            </Button>
+            {todoList?.tags?.length ? (
+            <Tooltip title={showTagChips ? 'Hide tags' : 'Show tags'}>
+              <span>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={() => setShowTagChips((prev) => !prev)}
+                  aria-label={showTagChips ? 'Hide tags' : 'Show tags'}
+                  >
+                    {showTagChips ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            ) : null}
+            <Tooltip title="Manage tags">
+              <span>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={() => setTagManagerOpen(true)}
+                  disabled={!todoListId}
+                  aria-label="Manage tags"
+                >
+                  <LocalOfferOutlinedIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
           </Stack>
         </Stack>
 
-        {todoList?.tags?.length ? (
+        {todoList?.tags?.length && showTagChips ? (
           <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
             {todoList.tags.map((tag) => (
               <Chip
