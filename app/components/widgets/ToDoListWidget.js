@@ -5,6 +5,7 @@ import Link from 'next/link';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import LinkIcon from '@mui/icons-material/Link';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -22,13 +23,13 @@ import DialogTitle from '@mui/material/DialogTitle';
 import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
 import { useDrag, useDrop } from 'react-dnd';
 import TodoItemDialog from './TodoItemDialog';
 import TodoTagManagerDialog from './TodoTagManagerDialog';
@@ -44,7 +45,6 @@ import {
 } from './todoListQueries';
 import {
   formatDueDateLabel,
-  getPriorityChipColor,
   getTodoTagChipSx,
   moveTodoItem,
   sortTodoItems,
@@ -59,9 +59,67 @@ const FILTER_OPTIONS = {
 };
 const ALL_TAG_FILTER = 'all';
 
+function getTodoItemRowSx(priority, isCompleted) {
+  return (theme) => {
+    const paletteByPriority = {
+      Urgent: {
+        background: theme.palette.error.main,
+        border: theme.palette.error.light,
+      },
+      High: {
+        background: theme.palette.warning.main,
+        border: theme.palette.warning.light,
+      },
+      Normal: {
+        background: theme.palette.text.primary,
+        border: theme.palette.divider,
+      },
+    };
+
+    const colors = paletteByPriority[priority] ?? paletteByPriority.Normal;
+
+    return {
+      backgroundColor:
+        priority === 'Normal'
+          ? theme.palette.action.hover
+          : alpha(colors.background, theme.palette.mode === 'dark' ? 0.22 : 0.1),
+      borderColor: colors.border,
+      '&:hover': {
+        backgroundColor:
+          priority === 'Normal'
+            ? theme.palette.action.selected
+            : alpha(colors.background, theme.palette.mode === 'dark' ? 0.3 : 0.16),
+      },
+      ...(isCompleted
+        ? {
+            opacity: 0.8,
+          }
+        : null),
+    };
+  };
+}
+
+function formatCreatedDateLabel(createdAt) {
+  if (!createdAt) {
+    return 'Created date unknown';
+  }
+
+  const parsedDate = new Date(createdAt);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'Created date unknown';
+  }
+
+  return `Created ${parsedDate.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })}`;
+}
+
 function TodoDraggableRow({
   item,
   textLines,
+  showMetadata,
   onMove,
   onDragStart,
   onDragEnd,
@@ -100,92 +158,183 @@ function TodoDraggableRow({
     <ListItemButton
       ref={rowRef}
       onClick={() => onEdit(item)}
-      sx={{
-        borderRadius: 2,
-        mb: 1,
-        alignItems: 'stretch',
-        opacity: isDragging ? 0.45 : 1,
-        border: '1px solid',
-        borderColor: 'divider',
-      }}
+      sx={[
+        {
+          borderRadius: 2,
+          mb: 1,
+          alignItems: 'flex-start',
+          opacity: isDragging ? 0.45 : 1,
+          border: '1px solid',
+          px: { xs: 1, sm: 1.25 },
+          py: { xs: 0.75, sm: 1 },
+        },
+        getTodoItemRowSx(item.priority, item.is_completed),
+      ]}
     >
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: '100%' }}>
-        <Tooltip title="Drag to reorder within the same priority group">
-          <Box
-            sx={{
-              display: 'grid',
-              placeItems: 'center',
-              color: 'text.secondary',
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={{ xs: 0.75, sm: 1 }}
+        alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+        sx={{ width: '100%', minWidth: 0 }}
+      >
+        <Stack
+          direction="row"
+          spacing={0.75}
+          alignItems="center"
+          justifyContent="flex-start"
+          useFlexGap
+          flexWrap={{ xs: 'wrap', sm: 'nowrap' }}
+          sx={{
+            minWidth: { sm: 52 },
+            alignSelf: { sm: 'center' },
+          }}
+        >
+          <Tooltip title="Drag to reorder within the same priority group">
+            <Box
+              sx={{
+                display: 'grid',
+                placeItems: 'center',
+                color: 'text.secondary',
+                width: 18,
+                minWidth: 18,
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <DragIndicatorIcon fontSize="small" />
+            </Box>
+          </Tooltip>
+
+          <Checkbox
+            checked={Boolean(item.is_completed)}
+            onChange={(event) => {
+              event.stopPropagation();
+              onToggleComplete(item, event.target.checked);
             }}
             onClick={(event) => event.stopPropagation()}
-          >
-            <DragIndicatorIcon fontSize="small" />
-          </Box>
-        </Tooltip>
+            size="small"
+            sx={{
+              p: 0.25,
+            }}
+          />
 
-        <Checkbox
-          checked={Boolean(item.is_completed)}
-          onChange={(event) => {
-            event.stopPropagation();
-            onToggleComplete(item, event.target.checked);
-          }}
-          onClick={(event) => event.stopPropagation()}
-        />
-
-        <ListItemText
-          primary={
-            <Stack spacing={1}>
-              <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
-                <Typography
-                  sx={{
-                    textDecoration: item.is_completed ? 'line-through' : 'none',
-                    color: item.is_completed ? 'text.secondary' : 'text.primary',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: textLines,
-                  }}
-                >
-                  {item.name}
-                </Typography>
-                <Chip
-                  size="small"
-                  label={item.priority}
-                  color={getPriorityChipColor(item.priority)}
-                  variant={item.priority === 'Normal' ? 'outlined' : 'filled'}
-                />
-              </Stack>
-
-              {item.tags?.length ? (
-                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-                  {item.tags.map((tag) => (
-                    <Chip
-                      key={tag.id}
-                      size="small"
-                      label={tag.name}
-                      variant="outlined"
-                      sx={getTodoTagChipSx(tag.color, 'outlined')}
-                    />
-                  ))}
-                </Stack>
-              ) : null}
-            </Stack>
-          }
-          secondary={formatDueDateLabel(item.due_date)}
-        />
-
-        <Tooltip title="Delete item">
-          <IconButton
-            edge="end"
-            color="error"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete(item);
+          <Stack
+            direction="row"
+            spacing={0.75}
+            alignItems="center"
+            useFlexGap
+            flexWrap="wrap"
+            sx={{
+              minWidth: 0,
+              display: { xs: 'flex', sm: 'none' },
+              flex: 1,
             }}
           >
-            <DeleteOutlineIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+            {showMetadata ? (
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                {formatCreatedDateLabel(item.created_at)}
+              </Typography>
+            ) : null}
+
+            <Tooltip title="Delete item">
+              <IconButton
+                size="small"
+                color="error"
+                sx={{ ml: 'auto', p: 0.25 }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(item);
+                }}
+              >
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Stack>
+
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack spacing={0.75}>
+            <Stack
+              direction="row"
+              spacing={0.75}
+              alignItems="center"
+              useFlexGap
+              flexWrap="wrap"
+              sx={{
+                minWidth: 0,
+                display: { xs: 'none', sm: 'flex' },
+              }}
+            >
+              {showMetadata ? (
+                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                  {formatCreatedDateLabel(item.created_at)}
+                </Typography>
+              ) : null}
+            </Stack>
+
+            <Typography
+              sx={{
+                textDecoration: item.is_completed ? 'line-through' : 'none',
+                color: item.is_completed ? 'text.secondary' : 'text.primary',
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: textLines,
+                lineHeight: 1.3,
+                width: '100%',
+                py: 0.25,
+              }}
+            >
+              {item.name}
+            </Typography>
+
+            {showMetadata ? (
+              <Stack direction="row" spacing={0.5} alignItems="center" useFlexGap flexWrap="wrap">
+                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                  {`Due ${formatDueDateLabel(item.due_date)}`}
+                </Typography>
+
+                {item.tags?.length
+                  ? item.tags.map((tag) => (
+                      <Chip
+                        key={tag.id}
+                        size="small"
+                        label={tag.name}
+                        variant="outlined"
+                        sx={{
+                          ...getTodoTagChipSx(tag.color, 'outlined'),
+                          height: 20,
+                          '& .MuiChip-label': { px: 0.75 },
+                        }}
+                      />
+                    ))
+                  : null}
+              </Stack>
+            ) : null}
+          </Stack>
+        </Box>
+
+        <Box
+          sx={{
+            display: { xs: 'none', sm: 'flex' },
+            alignSelf: 'center',
+            minWidth: 28,
+            justifyContent: 'center',
+          }}
+        >
+          <Tooltip title="Delete item">
+            <IconButton
+              size="small"
+              color="error"
+              sx={{ p: 0.25 }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(item);
+              }}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Stack>
     </ListItemButton>
   );
@@ -198,6 +347,7 @@ export default function ToDoListWidget({ widget }) {
   const [viewMode, setViewMode] = React.useState(FILTER_OPTIONS.active);
   const [tagFilterId, setTagFilterId] = React.useState(ALL_TAG_FILTER);
   const [showTagChips, setShowTagChips] = React.useState(false);
+  const [showItemMetadata, setShowItemMetadata] = React.useState(true);
   const [tagMenuAnchorEl, setTagMenuAnchorEl] = React.useState(null);
   const [loading, setLoading] = React.useState(Boolean(todoListId));
   const [saving, setSaving] = React.useState(false);
@@ -599,6 +749,18 @@ export default function ToDoListWidget({ widget }) {
                 </IconButton>
               </span>
             </Tooltip>
+            <Tooltip title={showItemMetadata ? 'Hide item metadata' : 'Show item metadata'}>
+              <span>
+                <IconButton
+                  size="small"
+                  color={showItemMetadata ? 'primary' : 'default'}
+                  onClick={() => setShowItemMetadata((prev) => !prev)}
+                  aria-label={showItemMetadata ? 'Hide item metadata' : 'Show item metadata'}
+                >
+                  <InfoOutlinedIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
             <Menu
               anchorEl={tagMenuAnchorEl}
               open={isTagMenuOpen}
@@ -714,6 +876,7 @@ export default function ToDoListWidget({ widget }) {
                   key={item.id}
                   item={item}
                   textLines={textLines}
+                  showMetadata={showItemMetadata}
                   onMove={handleMoveItem}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
