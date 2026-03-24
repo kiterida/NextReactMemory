@@ -42,7 +42,7 @@ export function sortTodoTags(tags = []) {
   });
 }
 
-export function moveTodoItem(items, draggedItemId, targetItemId) {
+export function moveTodoItem(items, draggedItemId, targetItemId, placement = 'before') {
   const orderedItems = sortTodoItems(items);
   const fromIndex = orderedItems.findIndex((item) => item.id === draggedItemId);
   const toIndex = orderedItems.findIndex((item) => item.id === targetItemId);
@@ -57,7 +57,21 @@ export function moveTodoItem(items, draggedItemId, targetItemId) {
 
   const nextItems = [...orderedItems];
   const [movedItem] = nextItems.splice(fromIndex, 1);
-  nextItems.splice(toIndex, 0, movedItem);
+  const normalizedPlacement = placement === 'after' ? 'after' : 'before';
+  const insertionIndex =
+    normalizedPlacement === 'after'
+      ? toIndex > fromIndex
+        ? toIndex
+        : toIndex + 1
+      : toIndex > fromIndex
+        ? toIndex - 1
+        : toIndex;
+
+  if (insertionIndex === fromIndex) {
+    return orderedItems;
+  }
+
+  nextItems.splice(insertionIndex, 0, movedItem);
 
   const nextOrderById = new Map();
   const groupedByPriority = {

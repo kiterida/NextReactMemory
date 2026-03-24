@@ -449,22 +449,46 @@ export async function updateTodoItem(todoItemId, itemInput) {
 }
 
 export async function reorderTodoItems(todoListId, items) {
-  const updates = items.map((item) =>
+  const normalizedItems = (items ?? []).map((item, index) => ({
+    id: Number(item.id),
+    itemOrder: Number(item.item_order ?? index),
+  }));
+
+  const temporaryOffset = 1000000;
+  const temporaryUpdates = normalizedItems.map((item, index) =>
     supabase
       .from('memory_core_todo_items')
-      .update({ item_order: Number(item.item_order ?? 0) })
+      .update({ item_order: temporaryOffset + index })
+      .eq('id', item.id)
+      .eq('todo_list_id', todoListId)
+      .select('id')
+      .single()
+  );
+
+  const temporaryResults = await Promise.all(temporaryUpdates);
+  const failedTemporaryUpdate = temporaryResults.find((result) => result.error);
+
+  if (failedTemporaryUpdate?.error) {
+    console.error('Error staging todo item reorder:', JSON.stringify(failedTemporaryUpdate.error, null, 2));
+    throw failedTemporaryUpdate.error;
+  }
+
+  const finalUpdates = normalizedItems.map((item) =>
+    supabase
+      .from('memory_core_todo_items')
+      .update({ item_order: item.itemOrder })
       .eq('id', item.id)
       .eq('todo_list_id', todoListId)
       .select(TODO_ITEM_COLUMNS)
       .single()
   );
 
-  const results = await Promise.all(updates);
-  const failedUpdate = results.find((result) => result.error);
+  const finalResults = await Promise.all(finalUpdates);
+  const failedFinalUpdate = finalResults.find((result) => result.error);
 
-  if (failedUpdate?.error) {
-    console.error('Error reordering todo items:', failedUpdate.error);
-    throw failedUpdate.error;
+  if (failedFinalUpdate?.error) {
+    console.error('Error reordering todo items:', JSON.stringify(failedFinalUpdate.error, null, 2));
+    throw failedFinalUpdate.error;
   }
 
   const refreshedTodoList = await getTodoListWithItemsAndTags(todoListId);

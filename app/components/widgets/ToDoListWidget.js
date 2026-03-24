@@ -30,7 +30,8 @@ import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
-import { useDrag, useDrop } from 'react-dnd';
+import { useDrag, useDragLayer, useDrop } from 'react-dnd';
+import { getEmptyImage } from 'react-dnd-html5-backend';
 import TodoItemDialog from './TodoItemDialog';
 import TodoTagManagerDialog from './TodoTagManagerDialog';
 import {
@@ -116,125 +117,85 @@ function formatCreatedDateLabel(createdAt) {
   })}`;
 }
 
-function TodoDraggableRow({
+function TodoItemRowContent({
   item,
   textLines,
   showMetadata,
-  onMove,
-  onDragStart,
-  onDragEnd,
   onToggleComplete,
   onDelete,
-  onEdit,
+  interactive = true,
 }) {
-  const rowRef = React.useRef(null);
-
-  const [, drop] = useDrop({
-    accept: DRAG_TYPE,
-    hover(draggedItem) {
-      if (draggedItem.id !== item.id) {
-        onMove(draggedItem.id, item.id);
-      }
-    },
-  });
-
-  const [{ isDragging }, drag] = useDrag({
-    type: DRAG_TYPE,
-    item: () => {
-      onDragStart();
-      return { id: item.id };
-    },
-    end: () => {
-      onDragEnd();
-    },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  drag(drop(rowRef));
-
   return (
-    <ListItemButton
-      ref={rowRef}
-      onClick={() => onEdit(item)}
-      sx={[
-        {
-          borderRadius: 2,
-          mb: 1,
-          alignItems: 'flex-start',
-          opacity: isDragging ? 0.45 : 1,
-          border: '1px solid',
-          px: { xs: 1, sm: 1.25 },
-          py: { xs: 0.75, sm: 1 },
-        },
-        getTodoItemRowSx(item.priority, item.is_completed),
-      ]}
+    <Stack
+      direction={{ xs: 'column', sm: 'row' }}
+      spacing={{ xs: 0.75, sm: 1 }}
+      alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+      sx={{ width: '100%', minWidth: 0 }}
     >
       <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={{ xs: 0.75, sm: 1 }}
-        alignItems={{ xs: 'stretch', sm: 'flex-start' }}
-        sx={{ width: '100%', minWidth: 0 }}
+        direction="row"
+        spacing={0.75}
+        alignItems="center"
+        justifyContent="flex-start"
+        useFlexGap
+        flexWrap={{ xs: 'wrap', sm: 'nowrap' }}
+        sx={{
+          minWidth: { sm: 52 },
+          alignSelf: { sm: 'center' },
+        }}
       >
+        <Tooltip title="Drag to reorder within the same priority group">
+          <Box
+            sx={{
+              display: 'grid',
+              placeItems: 'center',
+              color: 'text.secondary',
+              width: 18,
+              minWidth: 18,
+            }}
+            onClick={interactive ? (event) => event.stopPropagation() : undefined}
+          >
+            <DragIndicatorIcon fontSize="small" />
+          </Box>
+        </Tooltip>
+
+        <Checkbox
+          checked={Boolean(item.is_completed)}
+          onChange={
+            interactive && onToggleComplete
+              ? (event) => {
+                  event.stopPropagation();
+                  onToggleComplete(item, event.target.checked);
+                }
+              : undefined
+          }
+          onClick={interactive ? (event) => event.stopPropagation() : undefined}
+          disabled={!interactive}
+          size="small"
+          sx={{
+            p: 0.25,
+          }}
+        />
+
         <Stack
           direction="row"
           spacing={0.75}
           alignItems="center"
-          justifyContent="flex-start"
           useFlexGap
-          flexWrap={{ xs: 'wrap', sm: 'nowrap' }}
+          flexWrap="wrap"
           sx={{
-            minWidth: { sm: 52 },
-            alignSelf: { sm: 'center' },
+            minWidth: 0,
+            display: { xs: 'flex', sm: 'none' },
+            flex: 1,
           }}
         >
-          <Tooltip title="Drag to reorder within the same priority group">
-            <Box
-              sx={{
-                display: 'grid',
-                placeItems: 'center',
-                color: 'text.secondary',
-                width: 18,
-                minWidth: 18,
-              }}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <DragIndicatorIcon fontSize="small" />
-            </Box>
-          </Tooltip>
+          {showMetadata ? (
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+              {formatCreatedDateLabel(item.created_at)}
+            </Typography>
+          ) : null}
 
-          <Checkbox
-            checked={Boolean(item.is_completed)}
-            onChange={(event) => {
-              event.stopPropagation();
-              onToggleComplete(item, event.target.checked);
-            }}
-            onClick={(event) => event.stopPropagation()}
-            size="small"
-            sx={{
-              p: 0.25,
-            }}
-          />
-
-          <Stack
-            direction="row"
-            spacing={0.75}
-            alignItems="center"
-            useFlexGap
-            flexWrap="wrap"
-            sx={{
-              minWidth: 0,
-              display: { xs: 'flex', sm: 'none' },
-              flex: 1,
-            }}
-          >
-            {showMetadata ? (
-              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                {formatCreatedDateLabel(item.created_at)}
-              </Typography>
-            ) : null}
-
+          {interactive && onDelete ? (
             <Tooltip title="Delete item">
               <IconButton
                 size="small"
@@ -248,71 +209,73 @@ function TodoDraggableRow({
                 <DeleteOutlineIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-          </Stack>
+          ) : null}
         </Stack>
+      </Stack>
 
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack spacing={0.75}>
-            <Stack
-              direction="row"
-              spacing={0.75}
-              alignItems="center"
-              useFlexGap
-              flexWrap="wrap"
-              sx={{
-                minWidth: 0,
-                display: { xs: 'none', sm: 'flex' },
-              }}
-            >
-              {showMetadata ? (
-                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                  {formatCreatedDateLabel(item.created_at)}
-                </Typography>
-              ) : null}
-            </Stack>
-
-            <Typography
-              sx={{
-                textDecoration: item.is_completed ? 'line-through' : 'none',
-                color: item.is_completed ? 'text.secondary' : 'text.primary',
-                overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitBoxOrient: 'vertical',
-                WebkitLineClamp: textLines,
-                lineHeight: 1.3,
-                width: '100%',
-                py: 0.25,
-              }}
-            >
-              {item.name}
-            </Typography>
-
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Stack spacing={0.75}>
+          <Stack
+            direction="row"
+            spacing={0.75}
+            alignItems="center"
+            useFlexGap
+            flexWrap="wrap"
+            sx={{
+              minWidth: 0,
+              display: { xs: 'none', sm: 'flex' },
+            }}
+          >
             {showMetadata ? (
-              <Stack direction="row" spacing={0.5} alignItems="center" useFlexGap flexWrap="wrap">
-                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                  {`Due ${formatDueDateLabel(item.due_date)}`}
-                </Typography>
-
-                {item.tags?.length
-                  ? item.tags.map((tag) => (
-                      <Chip
-                        key={tag.id}
-                        size="small"
-                        label={tag.name}
-                        variant="outlined"
-                        sx={{
-                          ...getTodoTagChipSx(tag.color, 'outlined'),
-                          height: 20,
-                          '& .MuiChip-label': { px: 0.75 },
-                        }}
-                      />
-                    ))
-                  : null}
-              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                {formatCreatedDateLabel(item.created_at)}
+              </Typography>
             ) : null}
           </Stack>
-        </Box>
 
+          <Typography
+            sx={{
+              textDecoration: item.is_completed ? 'line-through' : 'none',
+              color: item.is_completed ? 'text.secondary' : 'text.primary',
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: textLines,
+              lineHeight: 1.3,
+              width: '100%',
+              py: 0.25,
+            }}
+          >
+            {item.name}
+          </Typography>
+
+          {showMetadata ? (
+            <Stack direction="row" spacing={0.5} alignItems="center" useFlexGap flexWrap="wrap">
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                {`Due ${formatDueDateLabel(item.due_date)}`}
+              </Typography>
+
+              {item.tags?.length
+                ? item.tags.map((tag) => (
+                    <Chip
+                      key={tag.id}
+                      size="small"
+                      label={tag.name}
+                      variant="outlined"
+                      sx={{
+                        ...getTodoTagChipSx(tag.color, 'outlined'),
+                        height: 20,
+                        '& .MuiChip-label': { px: 0.75 },
+                      }}
+                    />
+                  ))
+                : null}
+            </Stack>
+          ) : null}
+        </Stack>
+      </Box>
+
+      {interactive && onDelete ? (
         <Box
           sx={{
             display: { xs: 'none', sm: 'flex' },
@@ -335,8 +298,175 @@ function TodoDraggableRow({
             </IconButton>
           </Tooltip>
         </Box>
-      </Stack>
-    </ListItemButton>
+      ) : null}
+    </Stack>
+  );
+}
+
+function TodoItemDragPreview() {
+  const { currentOffset, itemType, draggedItem, isDragging } = useDragLayer((monitor) => ({
+    currentOffset: monitor.getSourceClientOffset(),
+    itemType: monitor.getItemType(),
+    draggedItem: monitor.getItem(),
+    isDragging: monitor.isDragging(),
+  }));
+
+  if (!isDragging || itemType !== DRAG_TYPE || !currentOffset || !draggedItem?.todoItem) {
+    return null;
+  }
+
+  const { x, y } = currentOffset;
+
+  return (
+    <Box
+      sx={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        pointerEvents: 'none',
+        zIndex: 1500,
+        transform: `translate(${x + 12}px, ${y + 12}px)`,
+      }}
+    >
+      <Box
+        sx={[
+          {
+            width: draggedItem.previewWidth ?? 320,
+            maxWidth: 'min(420px, calc(100vw - 24px))',
+            borderRadius: 2,
+            border: '1px solid',
+            px: { xs: 1, sm: 1.25 },
+            py: { xs: 0.75, sm: 1 },
+            boxShadow: 8,
+            bgcolor: 'background.paper',
+          },
+          getTodoItemRowSx(draggedItem.todoItem.priority, draggedItem.todoItem.is_completed),
+        ]}
+      >
+        <TodoItemRowContent
+          item={draggedItem.todoItem}
+          textLines={draggedItem.textLines}
+          showMetadata={draggedItem.showMetadata}
+          interactive={false}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+function TodoDropIndicator({ active = false }) {
+  return (
+    <Box
+      sx={(theme) => ({
+        height: 0,
+        mx: 1,
+        my: active ? 0.75 : 0,
+        borderTop: active ? `3px solid ${theme.palette.primary.main}` : '3px solid transparent',
+        borderRadius: 999,
+        boxShadow: active ? `0 0 0 2px ${alpha(theme.palette.primary.main, 0.16)}` : 'none',
+        transition: 'border-color 120ms ease, box-shadow 120ms ease, margin 120ms ease',
+      })}
+    />
+  );
+}
+
+function TodoDraggableRow({
+  item,
+  textLines,
+  showMetadata,
+  onMove,
+  onHoverTarget,
+  onDragStart,
+  onDragEnd,
+  onToggleComplete,
+  onDelete,
+  onEdit,
+  showDropLineBefore,
+  showDropLineAfter,
+}) {
+  const rowRef = React.useRef(null);
+
+  const [, drop] = useDrop({
+    accept: DRAG_TYPE,
+    hover(draggedItem, monitor) {
+      if (!rowRef.current || draggedItem.id === item.id) {
+        return;
+      }
+
+      if (draggedItem.todoItem?.priority !== item.priority) {
+        return;
+      }
+
+      const clientOffset = monitor.getClientOffset();
+      const bounds = rowRef.current.getBoundingClientRect();
+      if (!clientOffset || !bounds.height) {
+        return;
+      }
+
+      const placement = clientOffset.y < bounds.top + bounds.height / 2 ? 'before' : 'after';
+      onHoverTarget(draggedItem.id, item.id, placement);
+
+      if (draggedItem.id !== item.id) {
+        onMove(draggedItem.id, item.id, placement);
+      }
+    },
+  });
+
+  const [{ isDragging }, drag, preview] = useDrag({
+    type: DRAG_TYPE,
+    item: () => {
+      onDragStart();
+      return {
+        id: item.id,
+        todoItem: item,
+        textLines,
+        showMetadata,
+        previewWidth: rowRef.current?.getBoundingClientRect()?.width,
+      };
+    },
+    end: () => {
+      onDragEnd();
+    },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  React.useEffect(() => {
+    preview(getEmptyImage(), { captureDraggingState: true });
+  }, [preview]);
+
+  drag(drop(rowRef));
+
+  return (
+    <>
+      <TodoDropIndicator active={showDropLineBefore} />
+      <ListItemButton
+        ref={rowRef}
+        onClick={() => onEdit(item)}
+        sx={[
+          {
+            borderRadius: 2,
+            mb: 1,
+            alignItems: 'flex-start',
+            opacity: isDragging ? 0.45 : 1,
+            border: '1px solid',
+            px: { xs: 1, sm: 1.25 },
+            py: { xs: 0.75, sm: 1 },
+          },
+          getTodoItemRowSx(item.priority, item.is_completed),
+        ]}
+      >
+        <TodoItemRowContent
+          item={item}
+          textLines={textLines}
+          showMetadata={showMetadata}
+          onToggleComplete={onToggleComplete}
+          onDelete={onDelete}
+        />
+      </ListItemButton>
+      <TodoDropIndicator active={showDropLineAfter} />
+    </>
   );
 }
 
@@ -359,6 +489,7 @@ export default function ToDoListWidget({ widget }) {
   const [editingItem, setEditingItem] = React.useState(null);
   const [createItemDefaults, setCreateItemDefaults] = React.useState(null);
   const [deletingItem, setDeletingItem] = React.useState(null);
+  const [dropIndicator, setDropIndicator] = React.useState(null);
   const dragSnapshotRef = React.useRef([]);
   const hasPendingReorderRef = React.useRef(false);
   const todoListRef = React.useRef(null);
@@ -566,13 +697,13 @@ export default function ToDoListWidget({ widget }) {
     }
   };
 
-  const handleMoveItem = React.useCallback((draggedItemId, targetItemId) => {
+  const handleMoveItem = React.useCallback((draggedItemId, targetItemId, placement = 'before') => {
     setTodoList((prev) => {
       if (!prev) {
         return prev;
       }
 
-      const nextItems = moveTodoItem(prev.items ?? [], draggedItemId, targetItemId);
+      const nextItems = moveTodoItem(prev.items ?? [], draggedItemId, targetItemId, placement);
       const hasChanged =
         JSON.stringify(nextItems.map((item) => [item.id, item.item_order])) !==
         JSON.stringify((prev.items ?? []).map((item) => [item.id, item.item_order]));
@@ -588,12 +719,29 @@ export default function ToDoListWidget({ widget }) {
     });
   }, []);
 
+  const handleHoverTarget = React.useCallback((draggedItemId, targetItemId, placement = 'before') => {
+    setDropIndicator((prev) => {
+      if (
+        prev?.draggedItemId === draggedItemId &&
+        prev?.targetItemId === targetItemId &&
+        prev?.placement === placement
+      ) {
+        return prev;
+      }
+
+      return { draggedItemId, targetItemId, placement };
+    });
+  }, []);
+
   const handleDragStart = () => {
     dragSnapshotRef.current = todoList?.items ?? [];
     hasPendingReorderRef.current = false;
+    setDropIndicator(null);
   };
 
   const handleDragEnd = async () => {
+    setDropIndicator(null);
+
     if (!hasPendingReorderRef.current || !todoListId || !todoListRef.current) {
       return;
     }
@@ -636,6 +784,7 @@ export default function ToDoListWidget({ widget }) {
   };
 
   const items = sortTodoItems(todoList?.items ?? []);
+  const activeItemCount = items.filter((item) => !item.is_completed).length;
   const visibleItems = items.filter((item) => {
     if (viewMode === FILTER_OPTIONS.active && item.is_completed) {
       return false;
@@ -678,6 +827,7 @@ export default function ToDoListWidget({ widget }) {
 
   return (
     <>
+      <TodoItemDragPreview />
       <Stack spacing={2} sx={{ minHeight: widget?.height > 1 ? 220 : 'auto' }}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
@@ -687,7 +837,7 @@ export default function ToDoListWidget({ widget }) {
         >
           <Box>
             <Typography variant="body2" color="text.secondary">
-              {todoList?.name || 'Linked to-do list'}
+              {(todoList?.name || 'Linked to-do list') + ` (${activeItemCount})`}
             </Typography>
           </Box>
 
@@ -878,11 +1028,22 @@ export default function ToDoListWidget({ widget }) {
                   textLines={textLines}
                   showMetadata={showItemMetadata}
                   onMove={handleMoveItem}
+                  onHoverTarget={handleHoverTarget}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                   onToggleComplete={handleToggleComplete}
                   onDelete={handleDeleteItem}
                   onEdit={openEditDialog}
+                  showDropLineBefore={
+                    dropIndicator?.draggedItemId !== item.id &&
+                    dropIndicator?.targetItemId === item.id &&
+                    dropIndicator?.placement === 'before'
+                  }
+                  showDropLineAfter={
+                    dropIndicator?.draggedItemId !== item.id &&
+                    dropIndicator?.targetItemId === item.id &&
+                    dropIndicator?.placement === 'after'
+                  }
                 />
               ))}
             </List>
