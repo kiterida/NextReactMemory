@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import AddIcon from '@mui/icons-material/Add';
+import StorageIcon from '@mui/icons-material/Storage';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -44,6 +45,15 @@ export default function DashboardSidebarFooter({ mini = false }) {
           {mini ? <AddIcon fontSize="small" /> : 'New Dashboard'}
         </Button>
 
+        <Button
+          variant="outlined"
+          startIcon={mini ? null : <StorageIcon />}
+          onClick={() => router.push('/usage')}
+          sx={{ minWidth: 0 }}
+        >
+          {mini ? <StorageIcon fontSize="small" /> : 'Storage Usage'}
+        </Button>
+
         {!mini ? (
           <Typography variant="caption" color="text.secondary">
             Create a dashboard and its widgets will stay isolated to that view.
@@ -60,3 +70,4 @@ export default function DashboardSidebarFooter({ mini = false }) {
     </React.Fragment>
   );
 }
+

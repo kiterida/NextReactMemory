@@ -94,7 +94,15 @@ When clicked, the app calls a protected Next.js API route that:
    - `memory_items`
    - `memory_core_todo_items`
    - `memory_core_todo_lists`
+   - `memory_core_todo_tags`
+   - `memory_core_todo_item_tags`
+   - `memory_core_dashboards`
    - `memory_core_widgets`
+   - `memory_item_links`
+   - `memory_item_web_links`
+   - `memory_test_sessions`
+   - `memory_test_results`
+   - `revision_lists`
 4. Converts each table to a CSV file.
 5. Uploads the files into a private Supabase Storage folder like `backups/2026-03-18_14-32-10/`.
 
@@ -123,3 +131,4 @@ Notes:
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+

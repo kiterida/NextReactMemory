@@ -1,5 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+type BackupTableConfig = {
+  tableName: string;
+  fileName: string;
+  orderColumn: string;
+};
+
 export const BACKUP_TABLES = [
   {
     tableName: 'memory_items',
@@ -17,6 +23,16 @@ export const BACKUP_TABLES = [
     orderColumn: 'id',
   },
   {
+    tableName: 'memory_core_todo_tags',
+    fileName: 'memory_core_todo_tags.csv',
+    orderColumn: 'id',
+  },
+  {
+    tableName: 'memory_core_todo_item_tags',
+    fileName: 'memory_core_todo_item_tags.csv',
+    orderColumn: 'id',
+  },
+  {
     tableName: 'memory_core_dashboards',
     fileName: 'memory_core_dashboards.csv',
     orderColumn: 'id',
@@ -26,7 +42,32 @@ export const BACKUP_TABLES = [
     fileName: 'memory_core_widgets.csv',
     orderColumn: 'id',
   },
-] as const;
+  {
+    tableName: 'memory_item_links',
+    fileName: 'memory_item_links.csv',
+    orderColumn: 'id',
+  },
+  {
+    tableName: 'memory_item_web_links',
+    fileName: 'memory_item_web_links.csv',
+    orderColumn: 'id',
+  },
+  {
+    tableName: 'memory_test_sessions',
+    fileName: 'memory_test_sessions.csv',
+    orderColumn: 'id',
+  },
+  {
+    tableName: 'memory_test_results',
+    fileName: 'memory_test_results.csv',
+    orderColumn: 'id',
+  },
+  {
+    tableName: 'revision_lists',
+    fileName: 'revision_lists.csv',
+    orderColumn: 'id',
+  },
+] satisfies readonly BackupTableConfig[];
 
 const BACKUP_PAGE_SIZE = 1000;
 
