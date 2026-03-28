@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import * as React from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -158,11 +158,19 @@ export default function TimeTrackerProvider({ children }) {
       return;
     }
 
+    const getIdleMs = () => Date.now() - lastActivityAtRef.current;
+    const warningDelayMs = Math.max(0, TIME_TRACKING_INACTIVITY_TIMEOUT_MS - getIdleMs());
+
     inactivityWarningTimeoutRef.current = window.setTimeout(() => {
+      if (getIdleMs() < TIME_TRACKING_INACTIVITY_TIMEOUT_MS) {
+        resetInactivityTimers();
+        return;
+      }
+
       setWarningOpen(true);
 
-      const warningEndsAt = Date.now() + TIME_TRACKING_AUTO_STOP_GRACE_MS;
-      setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
+      const warningEndsAt = lastActivityAtRef.current + TIME_TRACKING_INACTIVITY_TIMEOUT_MS + TIME_TRACKING_AUTO_STOP_GRACE_MS;
+      setWarningCountdownSeconds(Math.max(0, Math.ceil((warningEndsAt - Date.now()) / 1000)));
 
       warningCountdownIntervalRef.current = window.setInterval(() => {
         const remainingSeconds = Math.max(0, Math.ceil((warningEndsAt - Date.now()) / 1000));
@@ -170,9 +178,14 @@ export default function TimeTrackerProvider({ children }) {
       }, 1000);
 
       inactivityAutoStopTimeoutRef.current = window.setTimeout(() => {
-        stopSessionRef.current?.('inactivity');
+        if (getIdleMs() >= TIME_TRACKING_INACTIVITY_TIMEOUT_MS + TIME_TRACKING_AUTO_STOP_GRACE_MS) {
+          stopSessionRef.current?.('inactivity');
+          return;
+        }
+
+        resetInactivityTimers();
       }, TIME_TRACKING_AUTO_STOP_GRACE_MS);
-    }, TIME_TRACKING_INACTIVITY_TIMEOUT_MS);
+    }, warningDelayMs);
   }, [clearInactivityTimers]);
 
   const markActivity = React.useCallback(() => {
