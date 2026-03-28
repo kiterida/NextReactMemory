@@ -23,6 +23,7 @@ import {
   fetchMemoryItemOptions,
   fetchTimeTrackingSessions,
   formatDuration,
+  formatThresholdMinutes,
   getDateBucketTotals,
   getSessionDurationSeconds,
 } from '@/app/lib/timeTracker';
@@ -203,13 +204,15 @@ export default function TimeSessionsPage() {
               <TableCell>Started</TableCell>
               <TableCell>Ended</TableCell>
               <TableCell>Duration</TableCell>
+              <TableCell>Alert threshold</TableCell>
+              <TableCell>Alert triggered</TableCell>
               <TableCell>Stop reason</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={9}>
                   <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ py: 4 }}>
                     <CircularProgress size={22} />
                     <Typography>Loading sessions...</Typography>
@@ -218,7 +221,7 @@ export default function TimeSessionsPage() {
               </TableRow>
             ) : sessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={9}>
                   <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                     No sessions found for the current filters.
                   </Typography>
@@ -233,6 +236,14 @@ export default function TimeSessionsPage() {
                   <TableCell>{new Date(session.started_at).toLocaleString()}</TableCell>
                   <TableCell>{session.ended_at ? new Date(session.ended_at).toLocaleString() : 'Running'}</TableCell>
                   <TableCell>{formatDuration(getSessionDurationSeconds(session))}</TableCell>
+                  <TableCell>{formatThresholdMinutes(session.alert_threshold_minutes)}</TableCell>
+                  <TableCell>
+                    {session.alert_triggered
+                      ? session.alert_triggered_at
+                        ? new Date(session.alert_triggered_at).toLocaleString()
+                        : 'Yes'
+                      : 'No'}
+                  </TableCell>
                   <TableCell>{session.stop_reason || (session.is_running ? 'running' : '-')}</TableCell>
                 </TableRow>
               ))
@@ -243,4 +254,3 @@ export default function TimeSessionsPage() {
     </Stack>
   );
 }
-

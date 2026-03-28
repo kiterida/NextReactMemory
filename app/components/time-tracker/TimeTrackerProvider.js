@@ -10,17 +10,21 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Snackbar from '@mui/material/Snackbar';
 import {
+  DEFAULT_TIME_TRACKING_ALERT_THRESHOLD_MINUTES,
   TIME_TRACKING_ACTIVITY_SYNC_MS,
   TIME_TRACKING_AUTO_STOP_GRACE_MS,
   TIME_TRACKING_INACTIVITY_TIMEOUT_MS,
   fetchMemoryItemOptions,
   fetchTimeTrackingSessionById,
   formatDuration,
+  getAlertThresholdSeconds,
   getSessionDurationSeconds,
+  isSessionOverThreshold,
   startTimeTrackingSession,
   stopTimeTrackingSession,
   updateTimeTrackingSession,
 } from '@/app/lib/timeTracker';
+import { playTimeTrackerAlertSound, prepareTimeTrackerAlertSound } from '@/app/lib/timeTrackerAudio';
 import { fetchMemoryItemById } from '@/app/components/memoryData';
 import { TimeTrackerContext } from './TimeTrackerContext';
 import TimeTrackerDialog from './TimeTrackerDialog';
@@ -33,6 +37,8 @@ const createDefaultDraft = () => ({
   memoryItemName: '',
   title: '',
   notes: '',
+  alertEnabled: false,
+  alertThresholdMinutes: DEFAULT_TIME_TRACKING_ALERT_THRESHOLD_MINUTES,
 });
 
 export default function TimeTrackerProvider({ children }) {
@@ -62,12 +68,14 @@ export default function TimeTrackerProvider({ children }) {
   const inactivityWarningTimeoutRef = React.useRef(null);
   const inactivityAutoStopTimeoutRef = React.useRef(null);
   const warningCountdownIntervalRef = React.useRef(null);
+  const alertTimeoutRef = React.useRef(null);
   const saveDraftTimeoutRef = React.useRef(null);
   const lastActivityAtRef = React.useRef(Date.now());
   const lastActivitySyncedAtRef = React.useRef(0);
   const activeSessionRef = React.useRef(null);
   const draftRef = React.useRef(createDefaultDraft());
   const stopSessionRef = React.useRef(null);
+  const alertTriggerInFlightRef = React.useRef(null);
 
   const showSnackbar = React.useCallback((message, severity = 'success') => {
     setSnackbarState({ open: true, severity, message });
@@ -87,6 +95,13 @@ export default function TimeTrackerProvider({ children }) {
     if (warningCountdownIntervalRef.current) {
       window.clearInterval(warningCountdownIntervalRef.current);
       warningCountdownIntervalRef.current = null;
+    }
+  }, []);
+
+  const clearAlertTimer = React.useCallback(() => {
+    if (alertTimeoutRef.current) {
+      window.clearTimeout(alertTimeoutRef.current);
+      alertTimeoutRef.current = null;
     }
   }, []);
 
@@ -112,6 +127,35 @@ export default function TimeTrackerProvider({ children }) {
       console.error(syncError);
     }
   }, []);
+
+  const triggerDurationAlert = React.useCallback(async (session) => {
+    if (!session?.id || session.alert_triggered || alertTriggerInFlightRef.current === session.id) {
+      return;
+    }
+
+    alertTriggerInFlightRef.current = session.id;
+    clearAlertTimer();
+    const triggeredAt = new Date().toISOString();
+
+    try {
+      const updatedSession = await updateTimeTrackingSession(session.id, {
+        alert_triggered: true,
+        alert_triggered_at: triggeredAt,
+      });
+      setActiveSession(updatedSession);
+    } catch (alertError) {
+      console.error(alertError);
+    } finally {
+      const played = await playTimeTrackerAlertSound();
+      showSnackbar(
+        played
+          ? `Session reached ${session.alert_threshold_minutes} minutes.`
+          : `Session reached ${session.alert_threshold_minutes} minutes, but the alert sound could not be played.`,
+        'warning'
+      );
+      alertTriggerInFlightRef.current = null;
+    }
+  }, [clearAlertTimer, showSnackbar]);
 
   const resetInactivityTimers = React.useCallback(() => {
     clearInactivityTimers();
@@ -146,6 +190,7 @@ export default function TimeTrackerProvider({ children }) {
 
     lastActivityAtRef.current = Date.now();
     resetInactivityTimers();
+    void prepareTimeTrackerAlertSound({ unlock: true });
     void syncLastActivity(false);
   }, [resetInactivityTimers, syncLastActivity]);
 
@@ -166,8 +211,10 @@ export default function TimeTrackerProvider({ children }) {
     activeSessionRef.current = activeSession;
     if (!activeSession) {
       lastActivitySyncedAtRef.current = 0;
+      alertTriggerInFlightRef.current = null;
+      clearAlertTimer();
     }
-  }, [activeSession]);
+  }, [activeSession, clearAlertTimer]);
 
   React.useEffect(() => {
     draftRef.current = draft;
@@ -291,6 +338,51 @@ export default function TimeTrackerProvider({ children }) {
   }, [activeSession]);
 
   React.useEffect(() => {
+    const session = activeSession;
+    clearAlertTimer();
+
+    if (!session?.id || !session.is_running || session.alert_triggered) {
+      return undefined;
+    }
+
+    const thresholdSeconds = getAlertThresholdSeconds(session);
+    if (thresholdSeconds === null) {
+      return undefined;
+    }
+
+    const elapsedSeconds = getSessionDurationSeconds(session);
+    const remainingMs = Math.max(0, (thresholdSeconds - elapsedSeconds) * 1000);
+
+    if (remainingMs === 0) {
+      void triggerDurationAlert(session);
+      return undefined;
+    }
+
+    alertTimeoutRef.current = window.setTimeout(() => {
+      void triggerDurationAlert(activeSessionRef.current ?? session);
+    }, remainingMs);
+
+    return () => {
+      clearAlertTimer();
+    };
+  }, [activeSession, clearAlertTimer, triggerDurationAlert]);
+  React.useEffect(() => {
+    const session = activeSession;
+    if (!session?.id || !session.is_running || session.alert_triggered) {
+      return;
+    }
+
+    const thresholdSeconds = getAlertThresholdSeconds(session);
+    if (thresholdSeconds === null) {
+      return;
+    }
+
+    if (elapsedNowSeconds >= thresholdSeconds) {
+      void triggerDurationAlert(session);
+    }
+  }, [activeSession, elapsedNowSeconds, triggerDurationAlert]);
+
+  React.useEffect(() => {
     if (typeof window === 'undefined') {
       return undefined;
     }
@@ -309,11 +401,12 @@ export default function TimeTrackerProvider({ children }) {
         window.removeEventListener(eventName, handleActivity);
       }
       clearInactivityTimers();
+      clearAlertTimer();
       if (saveDraftTimeoutRef.current) {
         window.clearTimeout(saveDraftTimeoutRef.current);
       }
     };
-  }, [clearInactivityTimers, markActivity]);
+  }, [clearAlertTimer, clearInactivityTimers, markActivity]);
 
   React.useEffect(() => {
     if (activeSession) {
@@ -366,6 +459,7 @@ export default function TimeTrackerProvider({ children }) {
   const openDialog = React.useCallback(() => {
     setIsDialogOpen(true);
     setMinimized(false);
+    void prepareTimeTrackerAlertSound({ unlock: true });
     void loadMemoryItemOptions();
   }, [loadMemoryItemOptions]);
 
@@ -383,11 +477,16 @@ export default function TimeTrackerProvider({ children }) {
     setError('');
 
     try {
+      await prepareTimeTrackerAlertSound({ unlock: true });
+
       const startedSession = await startTimeTrackingSession({
         memoryItemId: draftRef.current.memoryItemId,
         title: draftRef.current.title,
         notes: draftRef.current.notes,
         lastActivityAt: new Date().toISOString(),
+        alertThresholdMinutes: draftRef.current.alertEnabled
+          ? draftRef.current.alertThresholdMinutes
+          : null,
       });
 
       setActiveSession(startedSession);
@@ -396,6 +495,8 @@ export default function TimeTrackerProvider({ children }) {
         memoryItemName: startedSession.memory_item_name ?? '',
         title: startedSession.title ?? '',
         notes: startedSession.notes ?? '',
+        alertEnabled: Boolean(startedSession.alert_threshold_minutes),
+        alertThresholdMinutes: startedSession.alert_threshold_minutes ?? DEFAULT_TIME_TRACKING_ALERT_THRESHOLD_MINUTES,
       });
       setIsDialogOpen(true);
       setMinimized(false);
@@ -419,7 +520,17 @@ export default function TimeTrackerProvider({ children }) {
     setError('');
 
     try {
-      const stoppedSession = await stopTimeTrackingSession(activeSessionRef.current.id, {
+      const sessionToStop = activeSessionRef.current;
+
+      if (
+        sessionToStop &&
+        !sessionToStop.alert_triggered &&
+        isSessionOverThreshold(sessionToStop, getSessionDurationSeconds(sessionToStop))
+      ) {
+        await triggerDurationAlert(sessionToStop);
+      }
+
+      const stoppedSession = await stopTimeTrackingSession(sessionToStop.id, {
         session: activeSessionRef.current,
         stopReason,
         lastActivityAt: new Date(lastActivityAtRef.current).toISOString(),
@@ -432,6 +543,7 @@ export default function TimeTrackerProvider({ children }) {
       setIsDialogOpen(stopReason !== 'manual');
       setMinimized(false);
       clearInactivityTimers();
+      clearAlertTimer();
       showSnackbar(
         stopReason === 'inactivity'
           ? `Timer stopped for inactivity after ${formatDuration(getSessionDurationSeconds(stoppedSession))}.`
@@ -442,7 +554,7 @@ export default function TimeTrackerProvider({ children }) {
     } finally {
       setIsSaving(false);
     }
-  }, [clearInactivityTimers, showSnackbar]);
+  }, [clearAlertTimer, clearInactivityTimers, showSnackbar, triggerDurationAlert]);
 
   stopSessionRef.current = stopSession;
 
@@ -453,12 +565,23 @@ export default function TimeTrackerProvider({ children }) {
     void syncLastActivity(true);
   }, [resetInactivityTimers, syncLastActivity]);
 
+  const testAlertSound = React.useCallback(async () => {
+    const played = await playTimeTrackerAlertSound();
+    showSnackbar(played ? 'Alert sound played.' : 'Alert sound could not be played.', played ? 'success' : 'warning');
+  }, [showSnackbar]);
+
+  const isOverThreshold = React.useMemo(
+    () => isSessionOverThreshold(activeSession, elapsedNowSeconds),
+    [activeSession, elapsedNowSeconds]
+  );
+
   const value = React.useMemo(() => ({
     activeSession,
     draft,
     elapsedNowSeconds,
     error,
     isDialogOpen,
+    isOverThreshold,
     isSaving,
     memoryItemOptions,
     memoryItemOptionsLoading,
@@ -470,6 +593,7 @@ export default function TimeTrackerProvider({ children }) {
     setDraftValue,
     startSession,
     stopSession,
+    testAlertSound,
   }), [
     activeSession,
     closeDialog,
@@ -477,6 +601,7 @@ export default function TimeTrackerProvider({ children }) {
     elapsedNowSeconds,
     error,
     isDialogOpen,
+    isOverThreshold,
     isSaving,
     loadMemoryItemOptions,
     memoryItemOptions,
@@ -487,6 +612,7 @@ export default function TimeTrackerProvider({ children }) {
     setDraftValue,
     startSession,
     stopSession,
+    testAlertSound,
   ]);
 
   return (
@@ -525,3 +651,6 @@ export default function TimeTrackerProvider({ children }) {
     </TimeTrackerContext.Provider>
   );
 }
+
+
+

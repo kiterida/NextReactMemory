@@ -3,6 +3,7 @@ import { supabase } from '../components/supabaseClient';
 export const TIME_TRACKING_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 export const TIME_TRACKING_AUTO_STOP_GRACE_MS = 60 * 1000;
 export const TIME_TRACKING_ACTIVITY_SYNC_MS = 30 * 1000;
+export const DEFAULT_TIME_TRACKING_ALERT_THRESHOLD_MINUTES = 25;
 
 const TIME_TRACKING_SESSION_SELECT = `
   id,
@@ -15,7 +16,10 @@ const TIME_TRACKING_SESSION_SELECT = `
   duration_seconds,
   is_running,
   stop_reason,
-  last_activity_at
+  last_activity_at,
+  alert_threshold_minutes,
+  alert_triggered,
+  alert_triggered_at
 `;
 
 const toNullableNumber = (value) => {
@@ -25,6 +29,16 @@ const toNullableNumber = (value) => {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const toNullableInteger = (value) => {
+  const normalized = toNullableNumber(value);
+  if (normalized === null) {
+    return null;
+  }
+
+  const rounded = Math.round(normalized);
+  return Number.isFinite(rounded) ? rounded : null;
 };
 
 const formatSupabaseError = (error, fallbackMessage) => {
@@ -116,6 +130,44 @@ export function formatDuration(durationSeconds) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+export function formatThresholdMinutes(value) {
+  const minutes = toNullableInteger(value);
+  if (minutes === null) {
+    return '-';
+  }
+
+  return `${minutes} min`;
+}
+
+export function getAlertThresholdSeconds(session) {
+  const minutes = toNullableInteger(session?.alert_threshold_minutes);
+  if (minutes === null || minutes <= 0) {
+    return null;
+  }
+
+  return minutes * 60;
+}
+
+export function isSessionOverThreshold(session, elapsedSeconds = null) {
+  const thresholdSeconds = getAlertThresholdSeconds(session);
+  if (thresholdSeconds === null) {
+    return false;
+  }
+
+  const duration = elapsedSeconds ?? getSessionDurationSeconds(session);
+  return duration >= thresholdSeconds;
+}
+
+export function getOverdueSeconds(session, elapsedSeconds = null) {
+  const thresholdSeconds = getAlertThresholdSeconds(session);
+  if (thresholdSeconds === null) {
+    return 0;
+  }
+
+  const duration = elapsedSeconds ?? getSessionDurationSeconds(session);
+  return Math.max(0, duration - thresholdSeconds);
+}
+
 export function getDateInputRangeStart(dateValue) {
   if (!dateValue) {
     return null;
@@ -203,6 +255,18 @@ export async function updateTimeTrackingSession(sessionId, updates) {
     updatePayload.last_activity_at = updates.last_activity_at ?? null;
   }
 
+  if (Object.prototype.hasOwnProperty.call(updates, 'alert_threshold_minutes')) {
+    updatePayload.alert_threshold_minutes = toNullableInteger(updates.alert_threshold_minutes);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'alert_triggered')) {
+    updatePayload.alert_triggered = Boolean(updates.alert_triggered);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'alert_triggered_at')) {
+    updatePayload.alert_triggered_at = updates.alert_triggered_at ?? null;
+  }
+
   const { data, error } = await supabase
     .from('time_tracking_sessions')
     .update(updatePayload)
@@ -282,6 +346,9 @@ export async function startTimeTrackingSession(payload = {}) {
     started_at: nowIso,
     is_running: true,
     last_activity_at: payload.lastActivityAt ?? nowIso,
+    alert_threshold_minutes: toNullableInteger(payload.alertThresholdMinutes),
+    alert_triggered: false,
+    alert_triggered_at: null,
   };
 
   const { data, error } = await supabase
