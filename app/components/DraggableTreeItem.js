@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import Box from '@mui/material/Box';
 import { IconButton, Tooltip } from '@mui/material';
-import { Link as LinkIcon, Star } from '@mui/icons-material';
+import {
+  DragIndicator as DragIndicatorIcon,
+  Link as LinkIcon,
+  Lock as LockIcon,
+  Star,
+} from '@mui/icons-material';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import {
   MEMORY_ITEM_TYPES,
@@ -24,7 +29,9 @@ import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import Typography from '@mui/material/Typography';
 
-const ITEM_TYPE = 'TREE_ITEM';
+export const TREE_ITEM_NEST_DND_TYPE = 'TREE_ITEM_NEST';
+export const TREE_ITEM_REORDER_DND_TYPE = 'TREE_ITEM_REORDER';
+
 const ITEM_TYPE_OPTIONS = Object.values(MEMORY_ITEM_TYPES);
 
 const DraggableTreeItem = ({
@@ -41,54 +48,159 @@ const DraggableTreeItem = ({
   onPromoteToParentList,
   onSingleListView,
   onSetAsMemoryList,
+  onToggleListLock,
+  onReorderHover,
+  onReorderDrop,
+  onClearReorderHover,
+  reorderDropIndicator,
 }) => {
   const [contextMenu, setContextMenu] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [isItemTypeDialogOpen, setIsItemTypeDialogOpen] = useState(false);
   const [selectedItemType, setSelectedItemType] = useState(item.item_type ?? MEMORY_ITEM_TYPES.GROUP);
   const [isSavingItemType, setIsSavingItemType] = useState(false);
+  const rowRef = useRef(null);
 
   const isLinkedItem = Boolean(item.is_linked);
+  const isLockedList = item.item_type === MEMORY_ITEM_TYPES.LIST && Boolean(item.is_locked);
+  const canStartNestDrag = !isLinkedItem && !item.is_structure_locked;
+  const canStartReorderDrag = !isLinkedItem && Boolean(item.can_reorder);
+  const canAcceptNestedChildren = !isLinkedItem && !Boolean(item.blocks_child_structure);
+  const canCreateChild = !isLinkedItem && !Boolean(item.blocks_child_structure);
+  const showReorderHandle = isHovered || reorderDropIndicator?.draggedItemId === item.id;
+  const showDropBefore =
+    reorderDropIndicator?.draggedItemId !== item.id &&
+    reorderDropIndicator?.targetItemId === item.id &&
+    reorderDropIndicator?.placement === 'before';
+  const showDropAfter =
+    reorderDropIndicator?.draggedItemId !== item.id &&
+    reorderDropIndicator?.targetItemId === item.id &&
+    reorderDropIndicator?.placement === 'after';
 
   useEffect(() => {
     setSelectedItemType(item.item_type ?? MEMORY_ITEM_TYPES.GROUP);
   }, [item.item_type]);
 
-  const [{ isDragging: dragActive }, drag] = useDrag({
-    type: ITEM_TYPE,
-    canDrag: () => !isLinkedItem,
-    item: () => {
-      setIsDragging(true);
-      return { id: item.id, parent_id: item.tree_parent_id };
-    },
+  const reorderHandleTitle = useMemo(() => {
+    if (isLinkedItem) {
+      return 'Linked rows cannot be reordered here.';
+    }
+
+    if (item.parent_is_locked) {
+      return 'This list is locked. Reordering is disabled.';
+    }
+
+    if (!item.can_reorder) {
+      return 'Reordering is only available between siblings in an unlocked parent.';
+    }
+
+    return 'Drag to reorder siblings';
+  }, [isLinkedItem, item.parent_is_locked, item.can_reorder]);
+
+  const [{ isDragging: isNestDragging }, dragRow, nestPreview] = useDrag({
+    type: TREE_ITEM_NEST_DND_TYPE,
+    canDrag: () => canStartNestDrag,
+    item: () => ({
+      id: item.id,
+      parent_id: item.tree_parent_id ?? null,
+      source_item_id: item.source_item_id ?? item.id,
+    }),
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
-    end: () => setIsDragging(false),
+    end: () => {
+      onClearReorderHover?.();
+    },
   });
 
-  const resetParentIdOnLeftDrop = (draggedItem) => {
-    onDropUpdate(draggedItem.id, null);
-  };
+  const [{ isDragging: isReorderDragging }, dragHandle] = useDrag({
+    type: TREE_ITEM_REORDER_DND_TYPE,
+    canDrag: () => canStartReorderDrag,
+    item: () => ({
+      id: item.id,
+      parent_id: item.tree_parent_id ?? null,
+      source_item_id: item.source_item_id ?? item.id,
+    }),
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+    end: () => {
+      onClearReorderHover?.();
+    },
+  });
 
-  const [, drop] = useDrop({
-    accept: ITEM_TYPE,
-    canDrop: () => !isLinkedItem,
+  const [{ isOver, currentDragType, canDrop }, drop] = useDrop({
+    accept: [TREE_ITEM_NEST_DND_TYPE, TREE_ITEM_REORDER_DND_TYPE],
+    canDrop: (draggedItem, monitor) => {
+      const dragType = monitor.getItemType();
+
+      if (dragType === TREE_ITEM_REORDER_DND_TYPE) {
+        return (
+          !isLinkedItem &&
+          !draggedItem?.is_linked &&
+          draggedItem?.id !== item.id &&
+          String(draggedItem?.parent_id ?? '') === String(item.tree_parent_id ?? '')
+        );
+      }
+
+      return (
+        canAcceptNestedChildren &&
+        draggedItem?.id !== item.id &&
+        String(draggedItem?.parent_id ?? '') !== String(item.id)
+      );
+    },
+    hover: (draggedItem, monitor) => {
+      if (monitor.getItemType() !== TREE_ITEM_REORDER_DND_TYPE || !rowRef.current) {
+        return;
+      }
+
+      if (
+        draggedItem?.id === item.id ||
+        String(draggedItem?.parent_id ?? '') !== String(item.tree_parent_id ?? '')
+      ) {
+        onClearReorderHover?.();
+        return;
+      }
+
+      const hoverBoundingRect = rowRef.current.getBoundingClientRect();
+      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+      const clientOffset = monitor.getClientOffset();
+
+      if (!clientOffset) {
+        return;
+      }
+
+      const hoverClientY = clientOffset.y - hoverBoundingRect.top;
+      const placement = hoverClientY < hoverMiddleY ? 'before' : 'after';
+      onReorderHover?.(draggedItem.id, item.id, placement);
+    },
     drop: (draggedItem, monitor) => {
-      if (draggedItem.id === item.id) return;
+      if (draggedItem?.id === item.id || monitor.didDrop()) {
+        return;
+      }
 
-      const didDrop = monitor.didDrop();
-      if (didDrop) return;
+      const dragType = monitor.getItemType();
+
+      if (dragType === TREE_ITEM_REORDER_DND_TYPE) {
+        const indicator = reorderDropIndicator;
+        const placement = indicator?.targetItemId === item.id ? indicator.placement : 'before';
+        onReorderDrop?.(draggedItem.id, item.id, placement);
+        return;
+      }
 
       const dropOffset = monitor.getDifferenceFromInitialOffset();
 
       if (dropOffset && dropOffset.x < -100) {
-        resetParentIdOnLeftDrop(draggedItem);
+        onDropUpdate(draggedItem.id, null);
       } else if (String(draggedItem.parent_id ?? '') !== String(item.id)) {
         onDropUpdate(draggedItem.id, item.id);
       }
     },
+    collect: (monitor) => ({
+      isOver: monitor.isOver({ shallow: true }),
+      currentDragType: monitor.getItemType(),
+      canDrop: monitor.canDrop(),
+    }),
   });
 
   const handleContextMenu = (event) => {
@@ -147,29 +259,78 @@ const DraggableTreeItem = ({
 
   const getSubItemCount = (currentItem) => currentItem.child_count;
 
+  const showNestDropState = isOver && canDrop && currentDragType === TREE_ITEM_NEST_DND_TYPE;
+  const treeOpacity = isNestDragging || isReorderDragging ? 0.45 : 1;
+
   return (
     <>
       <TreeItem
-        ref={(node) => drag(drop(node))}
         itemId={String(item.id)}
         id={`tree-item-${item.id}`}
         label={
           <Box
+            ref={(node) => {
+              rowRef.current = node;
+              drop(node);
+              nestPreview(node);
+            }}
             onClick={(event) => onSelectItem(event, item)}
             onContextMenu={handleContextMenu}
-            sx={{
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => {
+              setIsHovered(false);
+              if (reorderDropIndicator?.targetItemId === item.id) {
+                onClearReorderHover?.();
+              }
+            }}
+            sx={(theme) => ({
               position: 'relative',
               display: 'flex',
               alignItems: 'center',
               width: '100%',
               minHeight: '40px',
-              paddingRight: '80px',
-              paddingLeft: isDragging ? '200px' : '8px',
-            }}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
+              paddingRight: '104px',
+              paddingLeft: '8px',
+              borderRadius: 1,
+              backgroundColor: showNestDropState ? theme.palette.action.hover : 'transparent',
+              outline: showNestDropState ? `1px solid ${theme.palette.primary.main}` : 'none',
+              transition: 'background-color 120ms ease, outline-color 120ms ease',
+              opacity: treeOpacity,
+            })}
           >
+            {showDropBefore ? (
+              <Box
+                sx={(theme) => ({
+                  position: 'absolute',
+                  left: 4,
+                  right: 4,
+                  top: 2,
+                  height: 2,
+                  borderRadius: 999,
+                  backgroundColor: theme.palette.primary.main,
+                })}
+              />
+            ) : null}
+            {showDropAfter ? (
+              <Box
+                sx={(theme) => ({
+                  position: 'absolute',
+                  left: 4,
+                  right: 4,
+                  bottom: 2,
+                  height: 2,
+                  borderRadius: 999,
+                  backgroundColor: theme.palette.primary.main,
+                })}
+              />
+            ) : null}
+
             <Box
+              ref={(node) => {
+                if (node) {
+                  dragRow(node);
+                }
+              }}
               sx={{
                 display: 'flex',
                 alignItems: 'center',
@@ -179,11 +340,17 @@ const DraggableTreeItem = ({
                 whiteSpace: 'nowrap',
                 flexGrow: 1,
                 minWidth: 0,
+                cursor: canStartNestDrag ? 'grab' : 'default',
               }}
             >
               {isLinkedItem ? (
                 <Tooltip title="Linked item">
                   <LinkIcon fontSize="small" color="action" />
+                </Tooltip>
+              ) : null}
+              {isLockedList ? (
+                <Tooltip title="This list is locked. Reordering is disabled.">
+                  <LockIcon fontSize="small" color="action" />
                 </Tooltip>
               ) : null}
               <Box
@@ -193,9 +360,11 @@ const DraggableTreeItem = ({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {item.name} {isDragging && 'Dragging'} {isHovered && <>[ {getSubItemCount(item)} ]</>}
+                {item.name}
+                {isHovered ? <> [ {getSubItemCount(item)} ]</> : null}
               </Box>
             </Box>
+
             <Box
               sx={{
                 position: 'absolute',
@@ -204,16 +373,37 @@ const DraggableTreeItem = ({
                 transform: 'translateY(-50%)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 0.5,
-                opacity: isHovered ? 1 : 0,
-                pointerEvents: isHovered ? 'auto' : 'none',
+                gap: 0.25,
+                opacity: isHovered || isReorderDragging ? 1 : 0,
+                pointerEvents: isHovered || isReorderDragging ? 'auto' : 'none',
                 transition: 'opacity 120ms ease',
                 bgcolor: 'background.paper',
                 borderRadius: 999,
-                boxShadow: isHovered ? 1 : 0,
+                boxShadow: isHovered || isReorderDragging ? 1 : 0,
                 px: 0.25,
               }}
             >
+              <Tooltip title={reorderHandleTitle}>
+                <span>
+                  <IconButton
+                    ref={(node) => {
+                      if (node) {
+                        dragHandle(node);
+                      }
+                    }}
+                    size="small"
+                    disabled={!canStartReorderDrag}
+                    onClick={(event) => event.stopPropagation()}
+                    sx={{
+                      opacity: showReorderHandle ? 1 : 0,
+                      visibility: showReorderHandle ? 'visible' : 'hidden',
+                    }}
+                  >
+                    <DragIndicatorIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+
               <Tooltip title={isLinkedItem ? 'Star source item' : 'Star List'}>
                 <IconButton
                   size="small"
@@ -226,25 +416,29 @@ const DraggableTreeItem = ({
                   {item.starred ? <Star fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                 </IconButton>
               </Tooltip>
+
               {!isLinkedItem ? (
-                <Tooltip title="Add Child Item">
-                  <IconButton
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCreateNewChild(item.id);
-                    }}
-                    color="primary"
-                    size="small"
-                  >
-                    <AddIcon fontSize="small" />
-                  </IconButton>
+                <Tooltip title={canCreateChild ? 'Add Child Item' : 'This list is locked. Structural changes are disabled.'}>
+                  <span>
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateNewChild(item.id);
+                      }}
+                      color="primary"
+                      size="small"
+                      disabled={!canCreateChild}
+                    >
+                      <AddIcon fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               ) : null}
             </Box>
           </Box>
         }
         style={{
-          opacity: dragActive ? 0.5 : 1,
+          opacity: treeOpacity,
         }}
       >
         {Array.isArray(item.children) && item.children.length > 0 ? children : null}
@@ -257,6 +451,7 @@ const DraggableTreeItem = ({
           />
         ) : null}
       </TreeItem>
+
       <Menu
         open={contextMenu !== null}
         onClose={handleClose}
@@ -268,12 +463,12 @@ const DraggableTreeItem = ({
         }
       >
         {!isLinkedItem ? (
-          <MenuItem onClick={() => { handleClose(); onCreateNewChild(item.id); }}>
+          <MenuItem disabled={!canCreateChild} onClick={() => { handleClose(); onCreateNewChild(item.id); }}>
             Add Child
           </MenuItem>
         ) : null}
         {onLinkExistingItemHere ? (
-          <MenuItem onClick={() => { handleClose(); onLinkExistingItemHere(item.id); }}>
+          <MenuItem disabled={!canAcceptNestedChildren} onClick={() => { handleClose(); onLinkExistingItemHere(item.id); }}>
             Link existing item here
           </MenuItem>
         ) : null}
@@ -285,8 +480,13 @@ const DraggableTreeItem = ({
             {item.item_type === 'list' ? 'Un Set as Memory List' : 'Set as Memory List'}
           </MenuItem>
         ) : null}
+        {!isLinkedItem && item.item_type === MEMORY_ITEM_TYPES.LIST ? (
+          <MenuItem onClick={() => { handleClose(); onToggleListLock(item, !item.is_locked); }}>
+            {item.is_locked ? 'Unlock List' : 'Lock List'}
+          </MenuItem>
+        ) : null}
         {!isLinkedItem ? (
-          <MenuItem onClick={() => { onConfirmDialogBox(item.id); handleClose(); }}>
+          <MenuItem disabled={!canCreateChild} onClick={() => { onConfirmDialogBox(item.id); handleClose(); }}>
             Insert 10 Items
           </MenuItem>
         ) : null}
@@ -312,6 +512,7 @@ const DraggableTreeItem = ({
           {isLinkedItem ? 'Remove Link' : 'Delete Item'}
         </MenuItem>
       </Menu>
+
       <Dialog open={isItemTypeDialogOpen} onClose={closeItemTypeDialog} maxWidth="xs" fullWidth>
         <DialogTitle>Change Item Type</DialogTitle>
         <DialogContent>
@@ -354,6 +555,3 @@ const DraggableTreeItem = ({
 };
 
 export default DraggableTreeItem;
-
-
-

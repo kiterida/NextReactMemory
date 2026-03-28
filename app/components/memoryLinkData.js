@@ -14,6 +14,7 @@ const DISPLAYED_CHILD_ITEM_SELECT = `
   parent_id,
   list_id,
   item_type,
+  is_locked,
   is_testable,
   memory_key,
   row_order,
@@ -275,7 +276,7 @@ export async function insertMemoryItemLink(parentItemId, childItemId, memoryKey)
 
   const { data: sourceItem, error: sourceItemError } = await supabase
     .from('memory_items')
-    .select('id, parent_id, list_id, item_type, is_testable, name, description, rich_text, code_snippet, memory_image, header_image, starred, memory_list_key')
+    .select('id, parent_id, list_id, item_type, is_locked, is_testable, name, description, rich_text, code_snippet, memory_image, header_image, starred, memory_list_key')
     .eq('id', normalizedChildId)
     .maybeSingle();
 
@@ -397,7 +398,7 @@ export async function searchLinkableMemoryItems(searchString) {
 
   let query = supabase
     .from('memory_items')
-    .select('id, parent_id, list_id, item_type, name, description, memory_key')
+    .select('id, parent_id, list_id, item_type, is_locked, name, description, memory_key')
     .order('name', { ascending: true })
     .limit(50);
 

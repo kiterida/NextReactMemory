@@ -31,6 +31,7 @@ const DEFAULT_MEMORY_ITEM_SELECT = `
   parent_id,
   list_id,
   item_type,
+  is_locked,
   is_testable,
   memory_key,
   row_order,
@@ -868,11 +869,71 @@ export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
       p_new_parent_id: normalizedParentId,
     });
 
-    if (error) throw error;
+    if (error) {
+      throw new Error(
+        formatSupabaseError(
+          error,
+          'Failed to move memory items. Make sure the structure-move migration has been applied.'
+        )
+      );
+    }
   } catch (err) {
     console.error("Error updating memory item(s):", err);
     throw err;
   }
+};
+
+export const reorderMemoryItemsWithinParent = async ({
+  movedItemId,
+  targetItemId,
+  insertPosition = 'before',
+}) => {
+  const normalizedMovedItemId = Number(movedItemId);
+  const normalizedTargetItemId = Number(targetItemId);
+  const normalizedInsertPosition = insertPosition === 'after' ? 'after' : 'before';
+
+  if (!Number.isFinite(normalizedMovedItemId) || !Number.isFinite(normalizedTargetItemId)) {
+    throw new Error('Invalid reorder item id.');
+  }
+
+  const { error } = await supabase.rpc('reorder_memory_items_within_parent', {
+    p_moved_item_id: normalizedMovedItemId,
+    p_target_item_id: normalizedTargetItemId,
+    p_insert_position: normalizedInsertPosition,
+  });
+
+  if (error) {
+    const message = formatSupabaseError(
+      error,
+      'Failed to reorder memory items. Make sure the reorder RPC migration has been applied.'
+    );
+    console.error('Error reordering memory items:', message, error);
+    throw new Error(message);
+  }
+};
+
+export const setMemoryListLockState = async (memoryItemId, isLocked) => {
+  const normalizedId = Number(memoryItemId);
+
+  if (!Number.isFinite(normalizedId)) {
+    throw new Error('Invalid memory list id.');
+  }
+
+  const { data, error } = await supabase.rpc('set_memory_list_lock_state', {
+    p_list_item_id: normalizedId,
+    p_is_locked: Boolean(isLocked),
+  });
+
+  if (error) {
+    const message = formatSupabaseError(
+      error,
+      'Failed to update the memory list lock state. Make sure the lock migration has been applied.'
+    );
+    console.error('Error updating memory list lock state:', message, error);
+    throw new Error(message);
+  }
+
+  return data ?? null;
 };
 
 

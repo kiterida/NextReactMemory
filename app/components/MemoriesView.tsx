@@ -3,7 +3,7 @@
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, updateMemoryItemParent, updateStarred, insertMultipleItems, compareMemoryTreeItems, sortMemoryTreeNodes } from './memoryData';
+import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, updateMemoryItemParent, insertMultipleItems, compareMemoryTreeItems, reorderMemoryItemsWithinParent, setMemoryListLockState, sortMemoryTreeNodes } from './memoryData';
 import LinkExistingMemoryItemDialog from './LinkExistingMemoryItemDialog';
 import { countDirectDescendants, createMemoryNodeWithSharedOrdering, deleteDirectMemoryItemTree, deleteMemoryItemLink, getNextMemoryKeyForParent, saveMemoryAppearance } from './memoryLinkData';
 import { supabase } from './supabaseClient';
@@ -12,7 +12,7 @@ import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import { useTreeViewApiRef } from '@mui/x-tree-view/hooks';
 import { DndProvider, useDrop, useDragLayer } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import DraggableTreeItem from './DraggableTreeItem';
+import DraggableTreeItem, { TREE_ITEM_NEST_DND_TYPE } from './DraggableTreeItem';
 import { Backdrop, Box, Card, CardContent, CircularProgress, Typography } from '@mui/material';
 import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
@@ -25,6 +25,7 @@ import {
   Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions
 } from '@mui/material';
+import { Lock as LockIcon, LockOpen as LockOpenIcon } from '@mui/icons-material';
 import { Insert100Items } from '../function_lib/treeDataFunctions';
 
 interface MemoriesViewProps {
@@ -46,6 +47,7 @@ type MemoryItem = {
   parent_id?: string | null;
   list_id?: string | null;
   item_type?: string | null;
+  is_locked?: boolean;
   is_testable?: boolean;
   code_snippet?: string;
   memory_key?: string | number | null;
@@ -83,6 +85,7 @@ export interface MemoryTreeItem {
   parent_id?: string | null;
   list_id?: string | null;
   item_type?: string | null;
+  is_locked?: boolean;
   is_testable?: boolean;
   code_snippet?: string;
   memory_key?: string | number | null;
@@ -94,11 +97,14 @@ export interface MemoryTreeItem {
   has_children?: boolean;   
   child_count?: number;
   isLoadingChildren?: boolean;
+  locked_list_root_id?: string | null;
+  is_structure_locked?: boolean;
+  parent_is_locked?: boolean;
+  blocks_child_structure?: boolean;
+  can_reorder?: boolean;
   // ... add any other fields your items have (like `title`, `starred`, etc.)
   children?: MemoryTreeItem[];
 }
-
-const TREE_ITEM_DND_TYPE = 'TREE_ITEM';
 
 const getTreeNodeId = (raw: any) => {
   if (raw?.is_linked && raw?.link_id !== null && raw?.link_id !== undefined) {
@@ -124,11 +130,39 @@ const normalizeTreeNode = (raw: any): MemoryTreeItem => {
       raw?.parent_id === null || raw?.parent_id === undefined ? null : String(raw.parent_id),
     tree_parent_id:
       raw?.parent_id === null || raw?.parent_id === undefined ? null : String(raw.parent_id),
+    is_locked: Boolean(raw?.is_locked),
     has_children: isLinked ? false : Boolean(raw?.has_children),
     child_count: isLinked ? 0 : Number(raw?.child_count ?? 0),
     children: Array.isArray(raw?.children) ? raw.children.map((child: any) => normalizeTreeNode(child)) : raw?.children,
   };
 };
+
+const annotateLockState = (
+  nodes: MemoryTreeItem[],
+  inheritedLockedListRootId: string | null = null
+): MemoryTreeItem[] =>
+  nodes.map((node) => {
+    const nodeId = String(node.id);
+    const isLockedListRoot = node.item_type === 'list' && Boolean(node.is_locked);
+    const currentLockedListRootId = inheritedLockedListRootId ?? (isLockedListRoot ? nodeId : null);
+    const nextLockedListRootId = inheritedLockedListRootId ?? (isLockedListRoot ? nodeId : null);
+    const parentIsLocked = inheritedLockedListRootId !== null;
+    const isStructureLocked = parentIsLocked;
+    const blocksChildStructure = inheritedLockedListRootId !== null || isLockedListRoot;
+    const canReorder = !isStructureLocked && (node.parent_id === null || !parentIsLocked);
+
+    return {
+      ...node,
+      locked_list_root_id: currentLockedListRootId,
+      is_structure_locked: isStructureLocked,
+      parent_is_locked: parentIsLocked,
+      blocks_child_structure: blocksChildStructure,
+      can_reorder: canReorder,
+      children: Array.isArray(node.children)
+        ? annotateLockState(node.children, nextLockedListRootId)
+        : node.children,
+    };
+  });
 const RootDropZone = ({
   onDropToRoot,
 }: {
@@ -140,12 +174,12 @@ const RootDropZone = ({
     }
 
     const itemType = monitor.getItemType();
-    return itemType === TREE_ITEM_DND_TYPE || itemType === 'TREE_ITEM';
+    return itemType === TREE_ITEM_NEST_DND_TYPE;
   });
 
   const [{ isOver }, dropRef] = useDrop(
     () => ({
-      accept: TREE_ITEM_DND_TYPE,
+      accept: TREE_ITEM_NEST_DND_TYPE,
       drop: (draggedItem: { id: string }, monitor) => {
         if (monitor.didDrop()) return;
         onDropToRoot(String(draggedItem.id));
@@ -264,6 +298,15 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkTargetItem, setLinkTargetItem] = useState<MemoryItem | null>(null);
   const [defaultLinkMemoryKey, setDefaultLinkMemoryKey] = useState<number | null>(null);
+  const [reorderDropIndicator, setReorderDropIndicator] = useState<{
+    draggedItemId: string;
+    targetItemId: string;
+    placement: 'before' | 'after';
+  } | null>(null);
+  const [lockDialogState, setLockDialogState] = useState<{
+    item: MemoryTreeItem | MemoryItem;
+    nextLocked: boolean;
+  } | null>(null);
 
 
   const [enableFocusItem, setEnableFocusItem] = useState(false);
@@ -306,6 +349,41 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
      await getSearchItemWithParents(sourceItemId);
 
+  }
+
+  function handleRequestToggleListLock(item: MemoryTreeItem | MemoryItem, nextLocked: boolean) {
+    setLockDialogState({ item, nextLocked });
+  }
+
+  async function handleConfirmToggleListLock() {
+    if (!lockDialogState) {
+      return;
+    }
+
+    const itemId = String(lockDialogState.item.source_item_id ?? lockDialogState.item.id);
+
+    try {
+      await setMemoryListLockState(itemId, lockDialogState.nextLocked);
+      setTreeData((prev) =>
+        finalizeTreeData(
+          updateNodeById(prev, String(lockDialogState.item.id), (node) => ({
+            ...node,
+            is_locked: lockDialogState.nextLocked,
+          }))
+        )
+      );
+      setSelectedItem((prev) =>
+        prev && String(prev.id) === String(lockDialogState.item.id)
+          ? { ...prev, is_locked: lockDialogState.nextLocked }
+          : prev
+      );
+      showMessage(lockDialogState.nextLocked ? 'List locked.' : 'List unlocked.', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      showMessage(`Failed to update lock state: ${message}`, 'error');
+    } finally {
+      setLockDialogState(null);
+    }
   }
 
   const cancelDeleteRevisionList = () => {
@@ -391,7 +469,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!includesTarget) {
       const { data: focusedItem, error: focusedItemError } = await supabase
         .from('memory_items')
-        .select('id, name, description, rich_text, parent_id, list_id, item_type, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
+        .select('id, name, description, rich_text, parent_id, list_id, item_type, is_locked, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
         .eq('id', targetId)
         .single();
 
@@ -402,7 +480,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
     if (path.length === 0) {
       console.log("path.length === 0,", roots);
-      setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(roots)));
+      setTreeData(finalizeTreeData(roots));
       return;
     }
 
@@ -424,6 +502,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         existing.description = pathNode.description;
         existing.rich_text = pathNode.rich_text;
         existing.parent_id = pathNode.parent_id;
+        existing.is_locked = pathNode.is_locked;
         existing.code_snippet = pathNode.code_snippet;
         existing.memory_key = pathNode.memory_key;
         existing.row_order = pathNode.row_order;
@@ -468,7 +547,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     }
 
     if (requestVersion !== treeLoadVersionRef.current) return;
-    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(mergedRoots)));
+    setTreeData(finalizeTreeData(mergedRoots));
   }
 
   const getTreeData = async () => {
@@ -486,7 +565,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     //console.log("Tree data length = ", data.length)
 
     if (requestVersion !== treeLoadVersionRef.current) return;
-    setTreeData(sortMemoryTreeNodes(dedupeTreeNodes(normalizedData)));
+    setTreeData(finalizeTreeData(normalizedData));
     console.log("data = ", data);
     //console.log("Tree data fetched");
   };
@@ -699,20 +778,91 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       return;
     }
 
-    await updateMemoryItemParent(treeMoveIds, normalizedParentId);
+    const sourceParentsToRefresh = Array.from(currentParentIds);
 
-    setTreeData((prev) =>
-      sortMemoryTreeNodes(
-        dedupeTreeNodes(moveNodesInTree(prev, treeMoveIds, normalizedParentId))
-      )
-    );
+    try {
+      await updateMemoryItemParent(treeMoveIds, normalizedParentId);
+      for (const parentId of Array.from(new Set([...sourceParentsToRefresh, normalizedParentId]))) {
+        await refreshParentChildren(parentId);
+      }
 
-    setSelectedItem((prev) =>
-      prev && treeMoveIds.includes(String(prev.id))
-        ? { ...prev, parent_id: normalizedParentId }
-        : prev
-    );
+      setSelectedItem((prev) =>
+        prev && treeMoveIds.includes(String(prev.id))
+          ? { ...prev, parent_id: normalizedParentId }
+          : prev
+      );
+
+      showMessage('Structure updated.', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      showMessage(`Failed to move item: ${message}`, 'error');
+    }
   };
+
+  function handleReorderHover(
+    draggedItemId: string,
+    targetItemId: string,
+    placement: 'before' | 'after'
+  ) {
+    setReorderDropIndicator((prev) => {
+      if (
+        prev?.draggedItemId === draggedItemId &&
+        prev?.targetItemId === targetItemId &&
+        prev?.placement === placement
+      ) {
+        return prev;
+      }
+
+      return { draggedItemId, targetItemId, placement };
+    });
+  }
+
+  function handleClearReorderHover() {
+    setReorderDropIndicator(null);
+  }
+
+  async function handleReorderDrop(
+    draggedItemId: string,
+    targetItemId: string,
+    placement: 'before' | 'after' = 'before'
+  ) {
+    handleClearReorderHover();
+
+    if (!draggedItemId || !targetItemId || draggedItemId === targetItemId) {
+      return;
+    }
+
+    const draggedNode = findNodeById(treeData, String(draggedItemId));
+    const targetNode = findNodeById(treeData, String(targetItemId));
+
+    if (!draggedNode || !targetNode) {
+      return;
+    }
+
+    if (draggedNode.is_linked || targetNode.is_linked) {
+      showMessage('Linked rows cannot be reordered with the drag handle.', 'warning');
+      return;
+    }
+
+    if (String(draggedNode.parent_id ?? '') !== String(targetNode.parent_id ?? '')) {
+      showMessage('Reordering is only allowed between siblings in the same parent.', 'warning');
+      return;
+    }
+
+    try {
+      await reorderMemoryItemsWithinParent({
+        movedItemId: draggedNode.source_item_id ?? draggedNode.id,
+        targetItemId: targetNode.source_item_id ?? targetNode.id,
+        insertPosition: placement,
+      });
+
+      await refreshParentChildren(draggedNode.parent_id ? String(draggedNode.parent_id) : null);
+      showMessage('Sibling order updated.', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      showMessage(`Failed to reorder items: ${message}`, 'error');
+    }
+  }
 
   const handlePromoteToParentList = async (itemId: string) => {
     const clickedItem = findNodeById(treeData, String(itemId));
@@ -748,6 +898,11 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     setShowSnackBar(true);
     
   }, []);
+
+  const finalizeTreeData = React.useCallback(
+    (nodes: MemoryTreeItem[]) => annotateLockState(sortMemoryTreeNodes(dedupeTreeNodes(nodes))),
+    []
+  );
 
   const showDeleteProgress = (message: string) => {
     setDeleteProgressMessage(message);
@@ -816,7 +971,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       );
 
       setTreeData((prev) =>
-        sortMemoryTreeNodes(
+        finalizeTreeData(
           updateNodeById(updateSourceAcrossTree(prev), itemToSave.id, (node) => ({
             ...node,
             memory_key: saveResult.displayMemoryKey,
@@ -863,7 +1018,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       await deleteMemoryItemLink(item.link_id);
       setSelectedItem((prev) => (prev?.id === treeNodeId ? null : prev));
       setSelectedItems((prev) => prev.filter((id) => id !== treeNodeId));
-      setTreeData((prev) => sortMemoryTreeNodes(removeNodeById(prev, treeNodeId)));
+      setTreeData((prev) => finalizeTreeData(removeNodeById(prev, treeNodeId)));
       return;
     }
 
@@ -876,7 +1031,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       prev.filter((id) => String(findNodeById(treeData, id)?.source_item_id ?? id) !== sourceItemId)
     );
     setTreeData((prev) =>
-      sortMemoryTreeNodes(
+      finalizeTreeData(
         removeNodeById(prev, treeNodeId)
       )
     );
@@ -1273,6 +1428,11 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           onPromoteToParentList={handlePromoteToParentList}
           onSingleListView={handleSingleListView}
           onSetAsMemoryList={handleSetAsMemoryList}
+          onToggleListLock={handleRequestToggleListLock}
+          onReorderHover={handleReorderHover}
+          onReorderDrop={handleReorderDrop}
+          onClearReorderHover={handleClearReorderHover}
+          reorderDropIndicator={reorderDropIndicator}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
         </DraggableTreeItem>
@@ -1486,13 +1646,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     return result;
   }
 
-  const refreshParentChildren = React.useCallback(async (parentId: string | null) => {
+  async function refreshParentChildren(parentId: string | null) {
     if (!parentId) {
       const data = await (fetchRootItems as (singleListViewId?: string | null, filterStarred?: boolean) => Promise<MemoryTreeItem[]>)(
         singleListView ?? null,
         filterStarred
       );
-      setTreeData(sortMemoryTreeNodes((data ?? []).map((item: any) => normalizeTreeNode(item))));
+      setTreeData(finalizeTreeData((data ?? []).map((item: any) => normalizeTreeNode(item))));
       return;
     }
 
@@ -1507,16 +1667,14 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         : [];
 
       setTreeData((prev) =>
-        sortMemoryTreeNodes(
-          dedupeTreeNodes(
-            updateNodeById(prev, parentId, (n) => ({
-              ...n,
-              isLoadingChildren: false,
-              children: normalizedChildren,
-              child_count: normalizedChildren.length,
-              has_children: normalizedChildren.length > 0,
-            }))
-          )
+        finalizeTreeData(
+          updateNodeById(prev, parentId, (n) => ({
+            ...n,
+            isLoadingChildren: false,
+            children: normalizedChildren,
+            child_count: normalizedChildren.length,
+            has_children: normalizedChildren.length > 0,
+          }))
         )
       );
     } catch (error) {
@@ -1525,7 +1683,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         updateNodeById(prev, parentId, (n) => ({ ...n, isLoadingChildren: false }))
       );
     }
-  }, [singleListView]);
+  }
 
 
     const ensureChildrenLoaded = React.useCallback(async (itemId: string) => {
@@ -1555,14 +1713,12 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           : [];
 
         setTreeData((prev) =>
-          sortMemoryTreeNodes(
-            dedupeTreeNodes(
-              updateNodeById(prev, itemId, (n) => ({
-                ...n,
-                isLoadingChildren: false,
-                children: normalizedChildren,
-              }))
-            )
+          finalizeTreeData(
+            updateNodeById(prev, itemId, (n) => ({
+              ...n,
+              isLoadingChildren: false,
+              children: normalizedChildren,
+            }))
           )
         );
       } catch (error) {
@@ -1674,6 +1830,24 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
               }}
             />
 
+            {selectedItem.item_type === 'list' ? (
+              <Box sx={{ px: 2, pb: 2 }}>
+                <Button
+                  variant="outlined"
+                  color={selectedItem.is_locked ? 'warning' : 'inherit'}
+                  startIcon={selectedItem.is_locked ? <LockOpenIcon /> : <LockIcon />}
+                  onClick={() => handleRequestToggleListLock(selectedItem, !selectedItem.is_locked)}
+                >
+                  {selectedItem.is_locked ? 'Unlock List' : 'Lock List'}
+                </Button>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  {selectedItem.is_locked
+                    ? 'This list is locked. Reordering and structural drag/drop changes are disabled.'
+                    : 'Lock this list when its memorized order should no longer change.'}
+                </Typography>
+              </Box>
+            ) : null}
+
             {selectedItem.description && (
               <Box sx={{ flexShrink: 0, overflow: 'auto', maxHeight: '400px', marginBottom: '10px' }}>
                 <Card>
@@ -1780,6 +1954,28 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         </Button>
         <Button onClick={handleConfirmDeleteDialog} color="error" autoFocus>
           Delete All
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    <Dialog
+      open={Boolean(lockDialogState)}
+      onClose={() => setLockDialogState(null)}
+    >
+      <DialogTitle>{lockDialogState?.nextLocked ? 'Lock This List?' : 'Unlock This List?'}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          {lockDialogState?.nextLocked
+            ? 'Lock this list? Reordering and structural drag/drop changes will be disabled.'
+            : 'Unlock this list? Reordering and structural drag/drop changes will be enabled again.'}
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setLockDialogState(null)} color="primary">
+          Cancel
+        </Button>
+        <Button onClick={handleConfirmToggleListLock} color={lockDialogState?.nextLocked ? 'warning' : 'primary'} autoFocus>
+          {lockDialogState?.nextLocked ? 'Lock List' : 'Unlock List'}
         </Button>
       </DialogActions>
     </Dialog>
