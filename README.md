@@ -125,6 +125,40 @@ Notes:
 - Uploads are done server-side, so the service role key is never exposed to the browser.
 - CSV headers are built from returned row data. If a table is completely empty, Supabase does not expose schema metadata through this route, so that CSV will be uploaded as an empty file.
 
+# Creating a CLOUDFLARE_API_TOKEN token
+
+Steps
+
+Open Cloudflare Dashboard.
+Go to My Profile > API Tokens for a user token, or Manage Account > Account API Tokens for an account-owned token.
+Click Create Token.
+Choose Custom token.
+Give it a name like r2-analytics-read.
+Add permission:
+Group: Account
+Permission: Analytics
+Access: Read
+Scope it to your Cloudflare account.
+Create the token and copy it immediately. Cloudflare only shows it once.
+What to put in .env.local
+
+CLOUDFLARE_API_TOKEN=your_token_here
+CLOUDFLARE_ACCOUNT_ID=your_account_id_here
+# How to get CLOUDFLARE_ACCOUNT_ID
+
+In Cloudflare dashboard, open your account homepage or R2 page.
+The Account ID is shown in the right sidebar / overview area.
+If your existing R2_ACCOUNT_ID is already your Cloudflare account ID, you may not need CLOUDFLARE_ACCOUNT_ID because the app already falls back to R2_ACCOUNT_ID.
+Good to know
+
+A user token is usually simplest.
+An account-owned token is better if you want this integration to keep working independent of your personal user, but it typically requires Super Admin.
+Official docs
+
+Create token: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+Analytics token setup: https://developers.cloudflare.com/analytics/graphql-api/getting-started/authentication/api-token-auth/
+Account-owned tokens: https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/
+
 
 ## Deploy on Vercel
 

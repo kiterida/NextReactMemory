@@ -37,6 +37,8 @@ import AppTitleWithVersion from '../components/AppTitleWithVersion';
 import R2ImageGalleryButton from '../components/R2ImageGalleryButton';
 import DashboardBackupButton from '../components/DashboardBackupButton';
 import DashboardSidebarFooter from '../components/dashboards/DashboardSidebarFooter';
+import TimeTrackerProvider from '../components/time-tracker/TimeTrackerProvider';
+import TimeTrackerHeaderButton from '../components/time-tracker/TimeTrackerHeaderButton';
 
 type MemoryItem = {
   id: string;
@@ -291,7 +293,7 @@ export default function Layout(props: { children: React.ReactNode }) {
   };
 
   const isSingleListViewRoute = pathname === '/singleListView';
-  const showSearchToolbar = pathname === '/memories' || pathname === '/starredLists';
+  const showSearchToolbar = true;
 
   const onCreateNewMemoryList = async () => {
     const newItemId = await createNewMemoryList();
@@ -421,27 +423,36 @@ export default function Layout(props: { children: React.ReactNode }) {
 
   const renderHeader = true;
 
+  function GlobalToolbarActions() {
+    return (
+      <Stack direction="row" alignItems="center" spacing={1}>
+        {showSearchToolbar ? <ToolbarActionsSearch /> : <ThemeSwitcher />}
+        <TimeTrackerHeaderButton />
+      </Stack>
+    );
+  }
+
   return (
-    <DashboardLayout
-      sx={{ height: '100vh', overflow: 'hidden' }}
-      slots={{
-        appTitle: AppTitleWithVersion,
-        sidebarFooter: DashboardSidebarFooter,
-        toolbarActions: showSearchToolbar ? ToolbarActionsSearch : undefined,
-      }}
-    >
-      {isSingleListViewRoute ? (
-        <Box sx={contentSx}>
-          {props.children}
-        </Box>
-      ) : (
-        <PageContainer title={title} sx={sxOverride} {...(renderHeader ? { slots: { header: CustomPageHeaderComponent } } : {})}>
-          {props.children}
-        </PageContainer>
-      )}
-    </DashboardLayout>
+    <TimeTrackerProvider>
+      <DashboardLayout
+        sx={{ height: '100vh', overflow: 'hidden' }}
+        slots={{
+          appTitle: AppTitleWithVersion,
+          sidebarFooter: DashboardSidebarFooter,
+          toolbarActions: GlobalToolbarActions,
+        }}
+      >
+        {isSingleListViewRoute ? (
+          <Box sx={contentSx}>
+            {props.children}
+          </Box>
+        ) : (
+          <PageContainer title={title} sx={sxOverride} {...(renderHeader ? { slots: { header: CustomPageHeaderComponent } } : {})}>
+            {props.children}
+          </PageContainer>
+        )}
+      </DashboardLayout>
+    </TimeTrackerProvider>
   );
 }
-
-
 

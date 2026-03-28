@@ -5,6 +5,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import PersonIcon from '@mui/icons-material/Person';
 import BookIcon from '@mui/icons-material/Book';
 import CenterFocusWeakIcon from '@mui/icons-material/CenterFocusWeak';
+import TimerIcon from '@mui/icons-material/Timer';
 import Box from '@mui/material/Box';
 import { SessionProvider, signIn, signOut } from 'next-auth/react';
 import { auth } from '../auth';
@@ -99,6 +100,13 @@ function buildNavigation(dashboards: Array<Record<string, unknown>>): Navigation
     },
     {
       kind: 'page',
+      segment: 'time-sessions',
+      title: 'Time Sessions',
+      icon: <TimerIcon />,
+      href: '/time-sessions',
+    },
+    {
+      kind: 'page',
       segment: 'sample',
       title: 'Sample Dashboard',
     },
@@ -145,3 +153,5 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
     </html>
   );
 }
+
+

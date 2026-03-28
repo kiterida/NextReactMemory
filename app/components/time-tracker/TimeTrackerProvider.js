@@ -1,0 +1,527 @@
+'use client';
+
+import * as React from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import Snackbar from '@mui/material/Snackbar';
+import {
+  TIME_TRACKING_ACTIVITY_SYNC_MS,
+  TIME_TRACKING_AUTO_STOP_GRACE_MS,
+  TIME_TRACKING_INACTIVITY_TIMEOUT_MS,
+  fetchMemoryItemOptions,
+  fetchTimeTrackingSessionById,
+  formatDuration,
+  getSessionDurationSeconds,
+  startTimeTrackingSession,
+  stopTimeTrackingSession,
+  updateTimeTrackingSession,
+} from '@/app/lib/timeTracker';
+import { fetchMemoryItemById } from '@/app/components/memoryData';
+import { TimeTrackerContext } from './TimeTrackerContext';
+import TimeTrackerDialog from './TimeTrackerDialog';
+import MinimizedTimeTracker from './MinimizedTimeTracker';
+
+const STORAGE_KEY = 'memory-core.time-tracker';
+
+const createDefaultDraft = () => ({
+  memoryItemId: null,
+  memoryItemName: '',
+  title: '',
+  notes: '',
+});
+
+export default function TimeTrackerProvider({ children }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const singleListViewId = searchParams.get('listId');
+  const [activeSession, setActiveSession] = React.useState(null);
+  const [draft, setDraft] = React.useState(createDefaultDraft);
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [minimized, setMinimized] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [elapsedNowSeconds, setElapsedNowSeconds] = React.useState(0);
+  const [memoryItemOptions, setMemoryItemOptions] = React.useState([]);
+  const [memoryItemOptionsLoading, setMemoryItemOptionsLoading] = React.useState(false);
+  const [warningOpen, setWarningOpen] = React.useState(false);
+  const [warningCountdownSeconds, setWarningCountdownSeconds] = React.useState(
+    Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000)
+  );
+  const [snackbarState, setSnackbarState] = React.useState({
+    open: false,
+    severity: 'success',
+    message: '',
+  });
+
+  const hydrationCompleteRef = React.useRef(false);
+  const inactivityWarningTimeoutRef = React.useRef(null);
+  const inactivityAutoStopTimeoutRef = React.useRef(null);
+  const warningCountdownIntervalRef = React.useRef(null);
+  const saveDraftTimeoutRef = React.useRef(null);
+  const lastActivityAtRef = React.useRef(Date.now());
+  const lastActivitySyncedAtRef = React.useRef(0);
+  const activeSessionRef = React.useRef(null);
+  const draftRef = React.useRef(createDefaultDraft());
+  const stopSessionRef = React.useRef(null);
+
+  const showSnackbar = React.useCallback((message, severity = 'success') => {
+    setSnackbarState({ open: true, severity, message });
+  }, []);
+
+  const clearInactivityTimers = React.useCallback(() => {
+    if (inactivityWarningTimeoutRef.current) {
+      window.clearTimeout(inactivityWarningTimeoutRef.current);
+      inactivityWarningTimeoutRef.current = null;
+    }
+
+    if (inactivityAutoStopTimeoutRef.current) {
+      window.clearTimeout(inactivityAutoStopTimeoutRef.current);
+      inactivityAutoStopTimeoutRef.current = null;
+    }
+
+    if (warningCountdownIntervalRef.current) {
+      window.clearInterval(warningCountdownIntervalRef.current);
+      warningCountdownIntervalRef.current = null;
+    }
+  }, []);
+
+  const syncLastActivity = React.useCallback(async (force = false) => {
+    const session = activeSessionRef.current;
+    if (!session?.id) {
+      return;
+    }
+
+    const now = Date.now();
+    if (!force && now - lastActivitySyncedAtRef.current < TIME_TRACKING_ACTIVITY_SYNC_MS) {
+      return;
+    }
+
+    lastActivitySyncedAtRef.current = now;
+
+    try {
+      const updatedSession = await updateTimeTrackingSession(session.id, {
+        last_activity_at: new Date(now).toISOString(),
+      });
+      setActiveSession(updatedSession);
+    } catch (syncError) {
+      console.error(syncError);
+    }
+  }, []);
+
+  const resetInactivityTimers = React.useCallback(() => {
+    clearInactivityTimers();
+    setWarningOpen(false);
+    setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
+
+    if (!activeSessionRef.current) {
+      return;
+    }
+
+    inactivityWarningTimeoutRef.current = window.setTimeout(() => {
+      setWarningOpen(true);
+
+      const warningEndsAt = Date.now() + TIME_TRACKING_AUTO_STOP_GRACE_MS;
+      setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
+
+      warningCountdownIntervalRef.current = window.setInterval(() => {
+        const remainingSeconds = Math.max(0, Math.ceil((warningEndsAt - Date.now()) / 1000));
+        setWarningCountdownSeconds(remainingSeconds);
+      }, 1000);
+
+      inactivityAutoStopTimeoutRef.current = window.setTimeout(() => {
+        stopSessionRef.current?.('inactivity');
+      }, TIME_TRACKING_AUTO_STOP_GRACE_MS);
+    }, TIME_TRACKING_INACTIVITY_TIMEOUT_MS);
+  }, [clearInactivityTimers]);
+
+  const markActivity = React.useCallback(() => {
+    if (!activeSessionRef.current) {
+      return;
+    }
+
+    lastActivityAtRef.current = Date.now();
+    resetInactivityTimers();
+    void syncLastActivity(false);
+  }, [resetInactivityTimers, syncLastActivity]);
+
+  const loadMemoryItemOptions = React.useCallback(async (searchTerm = '') => {
+    setMemoryItemOptionsLoading(true);
+
+    try {
+      const options = await fetchMemoryItemOptions(searchTerm);
+      setMemoryItemOptions(options);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load memory items.');
+    } finally {
+      setMemoryItemOptionsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    activeSessionRef.current = activeSession;
+    if (!activeSession) {
+      lastActivitySyncedAtRef.current = 0;
+    }
+  }, [activeSession]);
+
+  React.useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let cancelled = false;
+    const restore = async () => {
+      const storedRaw = window.localStorage.getItem(STORAGE_KEY);
+      if (!storedRaw) {
+        hydrationCompleteRef.current = true;
+        return;
+      }
+
+      try {
+        const stored = JSON.parse(storedRaw);
+        setDraft({
+          ...createDefaultDraft(),
+          ...(stored.draft ?? {}),
+        });
+        setIsDialogOpen(Boolean(stored.isDialogOpen));
+        setMinimized(Boolean(stored.minimized));
+
+        if (stored.activeSessionId) {
+          const restoredSession = await fetchTimeTrackingSessionById(stored.activeSessionId);
+          if (!cancelled && restoredSession?.is_running) {
+            setActiveSession(restoredSession);
+          }
+        }
+      } catch (restoreError) {
+        console.error(restoreError);
+      } finally {
+        if (!cancelled) {
+          hydrationCompleteRef.current = true;
+        }
+      }
+    };
+
+    void restore();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrationCompleteRef.current || typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        activeSessionId: activeSession?.id ?? null,
+        draft,
+        isDialogOpen,
+        minimized,
+      })
+    );
+  }, [activeSession, draft, isDialogOpen, minimized]);
+
+  React.useEffect(() => {
+    if (!singleListViewId || pathname !== '/singleListView' || activeSessionRef.current) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const syncSingleListDraft = async () => {
+      try {
+        const memoryItem = await fetchMemoryItemById(singleListViewId);
+        if (!memoryItem || cancelled) {
+          return;
+        }
+
+        setDraft((currentDraft) => {
+          if (
+            Number(currentDraft.memoryItemId) === Number(memoryItem.id) &&
+            currentDraft.memoryItemName === (memoryItem.name ?? '')
+          ) {
+            return currentDraft;
+          }
+
+          return {
+            ...currentDraft,
+            memoryItemId: Number(memoryItem.id),
+            memoryItemName: memoryItem.name ?? '',
+          };
+        });
+      } catch (loadError) {
+        console.error(loadError);
+      }
+    };
+
+    void syncSingleListDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession, pathname, singleListViewId]);
+
+  React.useEffect(() => {
+    if (!activeSession?.started_at) {
+      setElapsedNowSeconds(0);
+      return undefined;
+    }
+
+    setElapsedNowSeconds(getSessionDurationSeconds(activeSession));
+
+    const intervalId = window.setInterval(() => {
+      setElapsedNowSeconds(getSessionDurationSeconds(activeSessionRef.current));
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeSession]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+    const handleActivity = () => {
+      markActivity();
+    };
+
+    for (const eventName of activityEvents) {
+      window.addEventListener(eventName, handleActivity, { passive: true });
+    }
+
+    return () => {
+      for (const eventName of activityEvents) {
+        window.removeEventListener(eventName, handleActivity);
+      }
+      clearInactivityTimers();
+      if (saveDraftTimeoutRef.current) {
+        window.clearTimeout(saveDraftTimeoutRef.current);
+      }
+    };
+  }, [clearInactivityTimers, markActivity]);
+
+  React.useEffect(() => {
+    if (activeSession) {
+      resetInactivityTimers();
+      return undefined;
+    }
+
+    clearInactivityTimers();
+    setWarningOpen(false);
+    setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
+    return undefined;
+  }, [activeSession, clearInactivityTimers, resetInactivityTimers]);
+
+  React.useEffect(() => {
+    if (!activeSession?.id) {
+      return undefined;
+    }
+
+    if (saveDraftTimeoutRef.current) {
+      window.clearTimeout(saveDraftTimeoutRef.current);
+    }
+
+    saveDraftTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const updatedSession = await updateTimeTrackingSession(activeSession.id, {
+          memory_item_id: draft.memoryItemId,
+          title: draft.title,
+          notes: draft.notes,
+        });
+        setActiveSession(updatedSession);
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : 'Failed to save session changes.');
+      }
+    }, 500);
+
+    return () => {
+      if (saveDraftTimeoutRef.current) {
+        window.clearTimeout(saveDraftTimeoutRef.current);
+      }
+    };
+  }, [activeSession?.id, draft.memoryItemId, draft.title, draft.notes]);
+
+  const setDraftValue = React.useCallback((key, value) => {
+    setDraft((previousDraft) => ({
+      ...previousDraft,
+      [key]: value,
+    }));
+  }, []);
+
+  const openDialog = React.useCallback(() => {
+    setIsDialogOpen(true);
+    setMinimized(false);
+    void loadMemoryItemOptions();
+  }, [loadMemoryItemOptions]);
+
+  const closeDialog = React.useCallback(() => {
+    setIsDialogOpen(false);
+  }, []);
+
+  const minimizeDialog = React.useCallback(() => {
+    setIsDialogOpen(false);
+    setMinimized(true);
+  }, []);
+
+  const startSession = React.useCallback(async () => {
+    setIsSaving(true);
+    setError('');
+
+    try {
+      const startedSession = await startTimeTrackingSession({
+        memoryItemId: draftRef.current.memoryItemId,
+        title: draftRef.current.title,
+        notes: draftRef.current.notes,
+        lastActivityAt: new Date().toISOString(),
+      });
+
+      setActiveSession(startedSession);
+      setDraft({
+        memoryItemId: startedSession.memory_item_id ?? null,
+        memoryItemName: startedSession.memory_item_name ?? '',
+        title: startedSession.title ?? '',
+        notes: startedSession.notes ?? '',
+      });
+      setIsDialogOpen(true);
+      setMinimized(false);
+      lastActivityAtRef.current = Date.now();
+      lastActivitySyncedAtRef.current = 0;
+      resetInactivityTimers();
+      showSnackbar('Time tracking session started.');
+    } catch (startError) {
+      setError(startError instanceof Error ? startError.message : 'Failed to start time tracking session.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [resetInactivityTimers, showSnackbar]);
+
+  const stopSession = React.useCallback(async (stopReason = 'manual') => {
+    if (!activeSessionRef.current?.id) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+
+    try {
+      const stoppedSession = await stopTimeTrackingSession(activeSessionRef.current.id, {
+        session: activeSessionRef.current,
+        stopReason,
+        lastActivityAt: new Date(lastActivityAtRef.current).toISOString(),
+      });
+
+      setActiveSession(null);
+      setWarningOpen(false);
+      setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
+      setDraft(createDefaultDraft());
+      setIsDialogOpen(stopReason !== 'manual');
+      setMinimized(false);
+      clearInactivityTimers();
+      showSnackbar(
+        stopReason === 'inactivity'
+          ? `Timer stopped for inactivity after ${formatDuration(getSessionDurationSeconds(stoppedSession))}.`
+          : 'Time tracking session stopped.'
+      );
+    } catch (stopError) {
+      setError(stopError instanceof Error ? stopError.message : 'Failed to stop time tracking session.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [clearInactivityTimers, showSnackbar]);
+
+  stopSessionRef.current = stopSession;
+
+  const continueAfterWarning = React.useCallback(() => {
+    lastActivityAtRef.current = Date.now();
+    setWarningOpen(false);
+    resetInactivityTimers();
+    void syncLastActivity(true);
+  }, [resetInactivityTimers, syncLastActivity]);
+
+  const value = React.useMemo(() => ({
+    activeSession,
+    draft,
+    elapsedNowSeconds,
+    error,
+    isDialogOpen,
+    isSaving,
+    memoryItemOptions,
+    memoryItemOptionsLoading,
+    minimized,
+    closeDialog,
+    loadMemoryItemOptions,
+    minimizeDialog,
+    openDialog,
+    setDraftValue,
+    startSession,
+    stopSession,
+  }), [
+    activeSession,
+    closeDialog,
+    draft,
+    elapsedNowSeconds,
+    error,
+    isDialogOpen,
+    isSaving,
+    loadMemoryItemOptions,
+    memoryItemOptions,
+    memoryItemOptionsLoading,
+    minimizeDialog,
+    minimized,
+    openDialog,
+    setDraftValue,
+    startSession,
+    stopSession,
+  ]);
+
+  return (
+    <TimeTrackerContext.Provider value={value}>
+      {children}
+      <TimeTrackerDialog />
+      <MinimizedTimeTracker />
+
+      <Dialog open={warningOpen} onClose={() => {}} maxWidth="xs" fullWidth>
+        <DialogTitle>No activity detected. Stop timer?</DialogTitle>
+        <DialogContent dividers>
+          The current session will stop automatically in {warningCountdownSeconds} seconds if you do nothing.
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={continueAfterWarning}>Continue</Button>
+          <Button color="error" variant="contained" onClick={() => stopSession('inactivity')}>
+            Stop
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbarState.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbarState((current) => ({ ...current, open: false }))}
+      >
+        <Alert
+          severity={snackbarState.severity}
+          variant="filled"
+          onClose={() => setSnackbarState((current) => ({ ...current, open: false }))}
+          sx={{ width: '100%' }}
+        >
+          {snackbarState.message}
+        </Alert>
+      </Snackbar>
+    </TimeTrackerContext.Provider>
+  );
+}
