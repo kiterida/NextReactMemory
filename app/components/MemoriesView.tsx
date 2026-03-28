@@ -3,7 +3,20 @@
 'use client';
 import React, { useLayoutEffect, useRef, useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { toggleMemoryList, fetchRootItems, fetchChildren, fetchChildrenWithPath, updateMemoryItemParent, insertMultipleItems, compareMemoryTreeItems, reorderMemoryItemsWithinParent, setMemoryListLockState, sortMemoryTreeNodes } from './memoryData';
+import {
+  toggleMemoryList,
+  fetchRootItems,
+  fetchChildren,
+  fetchChildrenWithPath,
+  updateMemoryItemParent,
+  insertMultipleItems,
+  compareMemoryItemsForDisplay,
+  DEFAULT_MEMORY_SORT_MODE,
+  normalizeMemorySortMode,
+  reorderMemoryItemsWithinParent,
+  setMemoryListLockState,
+  sortMemoryNodesForDisplay,
+} from './memoryData';
 import LinkExistingMemoryItemDialog from './LinkExistingMemoryItemDialog';
 import { countDirectDescendants, createMemoryNodeWithSharedOrdering, deleteDirectMemoryItemTree, deleteMemoryItemLink, getNextMemoryKeyForParent, saveMemoryAppearance } from './memoryLinkData';
 import { supabase } from './supabaseClient';
@@ -47,6 +60,7 @@ type MemoryItem = {
   parent_id?: string | null;
   list_id?: string | null;
   item_type?: string | null;
+  sort_mode?: string | null;
   is_locked?: boolean;
   is_testable?: boolean;
   code_snippet?: string;
@@ -61,15 +75,16 @@ type MemoryItem = {
 type ItemDetailsDraftGetter = () => {
   itemIdentity: string;
   richText: string;
-  fields: {
-    memory_key: string;
-    row_order: string;
-    name: string;
-    memory_image: string;
-    description: string;
-    code_snippet: string;
-    header_image: string;
-  };
+    fields: {
+      memory_key: string;
+      row_order: string;
+      name: string;
+      memory_image: string;
+      description: string;
+      code_snippet: string;
+      header_image: string;
+      sort_mode: string;
+    };
 };
 
 export interface MemoryTreeItem {
@@ -85,6 +100,7 @@ export interface MemoryTreeItem {
   parent_id?: string | null;
   list_id?: string | null;
   item_type?: string | null;
+  sort_mode?: string | null;
   is_locked?: boolean;
   is_testable?: boolean;
   code_snippet?: string;
@@ -102,6 +118,7 @@ export interface MemoryTreeItem {
   parent_is_locked?: boolean;
   blocks_child_structure?: boolean;
   can_reorder?: boolean;
+  parent_sort_mode?: string;
   // ... add any other fields your items have (like `title`, `starred`, etc.)
   children?: MemoryTreeItem[];
 }
@@ -130,6 +147,7 @@ const normalizeTreeNode = (raw: any): MemoryTreeItem => {
       raw?.parent_id === null || raw?.parent_id === undefined ? null : String(raw.parent_id),
     tree_parent_id:
       raw?.parent_id === null || raw?.parent_id === undefined ? null : String(raw.parent_id),
+    sort_mode: normalizeMemorySortMode(raw?.sort_mode),
     is_locked: Boolean(raw?.is_locked),
     has_children: isLinked ? false : Boolean(raw?.has_children),
     child_count: isLinked ? 0 : Number(raw?.child_count ?? 0),
@@ -139,7 +157,8 @@ const normalizeTreeNode = (raw: any): MemoryTreeItem => {
 
 const annotateLockState = (
   nodes: MemoryTreeItem[],
-  inheritedLockedListRootId: string | null = null
+  inheritedLockedListRootId: string | null = null,
+  parentSortMode: string = DEFAULT_MEMORY_SORT_MODE
 ): MemoryTreeItem[] =>
   nodes.map((node) => {
     const nodeId = String(node.id);
@@ -149,17 +168,27 @@ const annotateLockState = (
     const parentIsLocked = inheritedLockedListRootId !== null;
     const isStructureLocked = parentIsLocked;
     const blocksChildStructure = inheritedLockedListRootId !== null || isLockedListRoot;
-    const canReorder = !isStructureLocked && (node.parent_id === null || !parentIsLocked);
+    const effectiveParentSortMode = normalizeMemorySortMode(parentSortMode);
+    const canReorder =
+      !isStructureLocked &&
+      effectiveParentSortMode === DEFAULT_MEMORY_SORT_MODE &&
+      (node.parent_id === null || !parentIsLocked);
 
     return {
       ...node,
+      sort_mode: normalizeMemorySortMode(node.sort_mode),
       locked_list_root_id: currentLockedListRootId,
       is_structure_locked: isStructureLocked,
       parent_is_locked: parentIsLocked,
       blocks_child_structure: blocksChildStructure,
       can_reorder: canReorder,
+      parent_sort_mode: effectiveParentSortMode,
       children: Array.isArray(node.children)
-        ? annotateLockState(node.children, nextLockedListRootId)
+        ? annotateLockState(
+            node.children,
+            nextLockedListRootId,
+            normalizeMemorySortMode(node.sort_mode)
+          )
         : node.children,
     };
   });
@@ -469,7 +498,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     if (!includesTarget) {
       const { data: focusedItem, error: focusedItemError } = await supabase
         .from('memory_items')
-        .select('id, name, description, rich_text, parent_id, list_id, item_type, is_locked, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
+        .select('id, name, description, rich_text, parent_id, list_id, item_type, sort_mode, is_locked, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
         .eq('id', targetId)
         .single();
 
@@ -502,6 +531,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         existing.description = pathNode.description;
         existing.rich_text = pathNode.rich_text;
         existing.parent_id = pathNode.parent_id;
+        existing.sort_mode = normalizeMemorySortMode(pathNode.sort_mode);
         existing.is_locked = pathNode.is_locked;
         existing.code_snippet = pathNode.code_snippet;
         existing.memory_key = pathNode.memory_key;
@@ -538,11 +568,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       const parentChildren = Array.isArray(parent.children) ? parent.children : [];
       if (!parentChildren.some((c) => c.id === node.id)) {
-        parent.children = [...parentChildren, node].sort(compareMemoryTreeItems);
+        parent.children = [...parentChildren, node].sort((a, b) =>
+          compareMemoryItemsForDisplay(parent.sort_mode, a, b)
+        );
       } else {
         parent.children = parentChildren
           .map((c) => (c.id === node.id ? node : c))
-          .sort(compareMemoryTreeItems);
+          .sort((a, b) => compareMemoryItemsForDisplay(parent.sort_mode, a, b));
       }
     }
 
@@ -849,6 +881,11 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       return;
     }
 
+    if (normalizeMemorySortMode(draggedNode.parent_sort_mode) !== DEFAULT_MEMORY_SORT_MODE) {
+      showMessage('Sibling reorder is only available while the parent is in Manual Order.', 'warning');
+      return;
+    }
+
     try {
       await reorderMemoryItemsWithinParent({
         movedItemId: draggedNode.source_item_id ?? draggedNode.id,
@@ -900,7 +937,12 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   }, []);
 
   const finalizeTreeData = React.useCallback(
-    (nodes: MemoryTreeItem[]) => annotateLockState(sortMemoryTreeNodes(dedupeTreeNodes(nodes))),
+    (nodes: MemoryTreeItem[]) =>
+      annotateLockState(
+        sortMemoryNodesForDisplay(dedupeTreeNodes(nodes), DEFAULT_MEMORY_SORT_MODE),
+        null,
+        DEFAULT_MEMORY_SORT_MODE
+      ),
     []
   );
 
@@ -919,6 +961,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
     try {
       const selectedItemIdentity = String(selectedItem.source_item_id ?? selectedItem.id);
+      const previousSortMode = normalizeMemorySortMode(selectedItem.sort_mode);
       const currentDraft = itemDetailsDraftGetterRef.current?.();
       const itemToSave =
         currentDraft && currentDraft.itemIdentity === selectedItemIdentity
@@ -928,6 +971,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
               rich_text: currentDraft.richText,
             }
           : selectedItem;
+      const nextSortMode = normalizeMemorySortMode(itemToSave.sort_mode);
 
       const saveResult = await saveMemoryAppearance(itemToSave);
       const sourceId = String(itemToSave.source_item_id ?? itemToSave.id);
@@ -940,6 +984,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
                 ...saveResult.sourceItem,
                 memory_key: node.is_linked ? node.memory_key : saveResult.sourceItem.memory_key,
                 row_order: node.is_linked ? node.row_order : saveResult.sourceItem.row_order,
+                sort_mode: normalizeMemorySortMode(saveResult.sourceItem.sort_mode),
               }
             : {}),
           id: node.id,
@@ -964,6 +1009,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
               is_linked: prev.is_linked,
               tree_parent_id: prev.tree_parent_id,
               parent_id: prev.parent_id,
+              sort_mode: normalizeMemorySortMode(saveResult.sourceItem.sort_mode),
               memory_key: saveResult.displayMemoryKey,
               row_order: saveResult.displayRowOrder,
             }
@@ -974,11 +1020,18 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         finalizeTreeData(
           updateNodeById(updateSourceAcrossTree(prev), itemToSave.id, (node) => ({
             ...node,
+            sort_mode: normalizeMemorySortMode(saveResult.sourceItem.sort_mode),
             memory_key: saveResult.displayMemoryKey,
             row_order: saveResult.displayRowOrder,
           }))
         )
       );
+
+      if (!itemToSave.is_linked && previousSortMode !== nextSortMode) {
+        // Display sort is a per-container view preference. Refresh only this node's
+        // direct children so UI ordering updates without rewriting memorization keys.
+        await refreshParentChildren(String(itemToSave.id));
+      }
 
       showMessage(itemToSave.is_linked ? "Linked item saved and source content updated." : "Save successful");
     } catch (error) {
@@ -1070,7 +1123,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       const { data, error } = await supabase
         .from('memory_items')
-        .select('id, name, description, rich_text, parent_id, list_id, item_type, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
+        .select('id, name, description, rich_text, parent_id, list_id, item_type, sort_mode, is_testable, code_snippet, memory_key, row_order, memory_image, header_image, starred, memory_list_key')
         .eq('id', normalizedTargetId)
         .single();
 

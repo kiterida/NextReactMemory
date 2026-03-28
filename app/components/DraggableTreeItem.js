@@ -11,7 +11,9 @@ import {
 } from '@mui/icons-material';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import {
+  DEFAULT_MEMORY_SORT_MODE,
   MEMORY_ITEM_TYPES,
+  normalizeMemorySortMode,
   updateMemoryItemType,
   updateStarred,
 } from './memoryData';
@@ -64,6 +66,7 @@ const DraggableTreeItem = ({
   const isLinkedItem = Boolean(item.is_linked);
   const isLockedList = item.item_type === MEMORY_ITEM_TYPES.LIST && Boolean(item.is_locked);
   const canStartNestDrag = !isLinkedItem && !item.is_structure_locked;
+  const parentSortMode = normalizeMemorySortMode(item.parent_sort_mode);
   const canStartReorderDrag = !isLinkedItem && Boolean(item.can_reorder);
   const canAcceptNestedChildren = !isLinkedItem && !Boolean(item.blocks_child_structure);
   const canCreateChild = !isLinkedItem && !Boolean(item.blocks_child_structure);
@@ -90,12 +93,16 @@ const DraggableTreeItem = ({
       return 'This list is locked. Reordering is disabled.';
     }
 
+    if (parentSortMode !== DEFAULT_MEMORY_SORT_MODE) {
+      return 'Switch this parent back to Manual Order to reorder siblings.';
+    }
+
     if (!item.can_reorder) {
       return 'Reordering is only available between siblings in an unlocked parent.';
     }
 
     return 'Drag to reorder siblings';
-  }, [isLinkedItem, item.parent_is_locked, item.can_reorder]);
+  }, [isLinkedItem, item.parent_is_locked, item.can_reorder, parentSortMode]);
 
   const [{ isDragging: isNestDragging }, dragRow, nestPreview] = useDrag({
     type: TREE_ITEM_NEST_DND_TYPE,

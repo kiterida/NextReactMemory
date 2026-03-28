@@ -8,8 +8,18 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 import { R2ImageGalleryDialog } from './R2ImageGalleryButton';
 import MemoryItemWebLinksTab from './MemoryItemWebLinksTab';
+import {
+  DEFAULT_MEMORY_SORT_MODE,
+  MEMORY_SORT_MODE_OPTIONS,
+  isMemoryContainerNode,
+  normalizeMemorySortMode,
+} from './memoryData';
 import 'quill/dist/quill.snow.css';
 
 function CustomTabPanel(props) {
@@ -72,6 +82,7 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
     description: item?.description || '',
     code_snippet: item?.code_snippet || '',
     header_image: item?.header_image || '',
+    sort_mode: normalizeMemorySortMode(item?.sort_mode),
   }), []);
   const [textDraft, setTextDraft] = React.useState(() => buildTextDraft(selectedItem));
   const pendingTextDraftRef = React.useRef(buildTextDraft(selectedItem));
@@ -159,6 +170,11 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
 
       if ((prev.header_image || '') !== pendingTextDraft.header_image) {
         nextItem.header_image = pendingTextDraft.header_image;
+        didChange = true;
+      }
+
+      if (normalizeMemorySortMode(prev.sort_mode) !== pendingTextDraft.sort_mode) {
+        nextItem.sort_mode = pendingTextDraft.sort_mode;
         didChange = true;
       }
 
@@ -411,6 +427,8 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
     };
   }, [onRegisterRichTextDraftGetter]);
 
+  const canConfigureSortMode = !selectedItem?.is_linked && isMemoryContainerNode(selectedItem);
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -463,6 +481,24 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
           rows={4}
           margin="normal"
         />
+        {canConfigureSortMode ? (
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="memory-sort-mode-label">Child Sort Mode</InputLabel>
+            <Select
+              labelId="memory-sort-mode-label"
+              label="Child Sort Mode"
+              value={textDraft.sort_mode || DEFAULT_MEMORY_SORT_MODE}
+              onChange={(event) => updateTextDraftField('sort_mode', normalizeMemorySortMode(event.target.value))}
+              onBlur={flushPendingTextDraft}
+            >
+              {MEMORY_SORT_MODE_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        ) : null}
       </CustomTabPanel>
 
       <CustomTabPanel value={value} index={1}>

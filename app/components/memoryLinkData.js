@@ -1,5 +1,10 @@
 import { supabase } from './supabaseClient';
-import { fetchMemoryItemById, refreshMemoryItemMetadata, MEMORY_ITEM_TYPES } from './memoryData';
+import {
+  fetchMemoryItemById,
+  refreshMemoryItemMetadata,
+  MEMORY_ITEM_TYPES,
+  normalizeMemorySortMode,
+} from './memoryData';
 
 const DISPLAYED_LINK_SELECT = `
   id,
@@ -14,6 +19,7 @@ const DISPLAYED_CHILD_ITEM_SELECT = `
   parent_id,
   list_id,
   item_type,
+  sort_mode,
   is_locked,
   is_testable,
   memory_key,
@@ -276,7 +282,7 @@ export async function insertMemoryItemLink(parentItemId, childItemId, memoryKey)
 
   const { data: sourceItem, error: sourceItemError } = await supabase
     .from('memory_items')
-    .select('id, parent_id, list_id, item_type, is_locked, is_testable, name, description, rich_text, code_snippet, memory_image, header_image, starred, memory_list_key')
+    .select('id, parent_id, list_id, item_type, sort_mode, is_locked, is_testable, name, description, rich_text, code_snippet, memory_image, header_image, starred, memory_list_key')
     .eq('id', normalizedChildId)
     .maybeSingle();
 
@@ -486,6 +492,7 @@ export async function saveMemoryAppearance(selectedItem) {
     code_snippet: selectedItem.code_snippet,
     description: selectedItem.description,
     rich_text: selectedItem.rich_text,
+    sort_mode: selectedItem.is_linked ? undefined : normalizeMemorySortMode(selectedItem.sort_mode),
   };
 
   const cleanedPayload = Object.fromEntries(

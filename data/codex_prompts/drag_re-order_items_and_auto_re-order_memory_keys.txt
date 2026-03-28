@@ -1,0 +1,260 @@
+You are working on my existing app called Memory Core.
+
+Tech stack / context:
+- Next.js + React + MUI
+- Supabase backend
+- Memory items are stored in `public.memory_items`
+- My tree/list system already supports drag-and-drop to move an item onto another item so it becomes that item's child
+- Ordering inside a list is controlled by `memory_key`
+- This ordering is critical to my memory system, so reordering must be handled very carefully
+- Some lists must be lockable so their order cannot be changed once memorized
+
+I want you to add a SECOND drag-and-drop mode for reordering items within the same parent list, while preserving the EXISTING drag-and-drop behavior for nesting items inside another item.
+
+## Goal
+
+Add support for two distinct drag-and-drop behaviors on memory list items:
+
+1. **Existing mode: Move into another item**
+   - Drag an item onto another item
+   - Dropped item becomes a child of the target item
+   - Existing behavior must continue to work
+
+2. **New mode: Reorder within the same parent list**
+   - When hovering a list item, show a drag handle icon
+   - Dragging by the handle should reorder the item among its siblings
+   - This reorder mode must be clearly separate from the existing “drop into item” behavior
+   - Reordering should only happen within the same parent list unless I explicitly allow a top-level organizational move
+
+## Important business rule
+
+Reordering a memory list is dangerous because `memory_key` is how I memorize the content.
+
+If a list has been memorized / completed, I need to be able to LOCK it so that sibling reordering is disabled.
+
+That means:
+- A locked list cannot have its children reordered
+- A locked list should not allow drag-handle reorder operations on its direct child items
+- Existing nesting drag-drop should also be blocked where appropriate for locked lists
+- However, I still want to be able to organize higher-level top-level lists if needed
+- Locking should be designed around the list node / parent list level, not just individual items
+
+## What I want implemented
+
+### 1. Database changes
+
+Design and implement a safe locking system for lists.
+
+My `memory_items` table already has `item_type` and it can be values like:
+- group
+- folder
+- item
+- list
+
+I want a field added to support locking.
+
+Recommended approach:
+- Add a new boolean column to `public.memory_items` called `is_locked`
+- Default false
+- This should primarily be meaningful for rows where `item_type = 'list'`
+- If needed, helper logic can determine whether a child item belongs to a locked parent list
+
+Create:
+- Supabase migration SQL
+- Any indexes if actually needed
+- Any updates to TypeScript / JS types used in the app
+
+### 2. Locking behavior rules
+
+Please implement the following logic carefully:
+
+#### A. Reordering siblings
+Allow reorder only when:
+- source item and target item have the same `parent_id`
+- the parent list is NOT locked
+- if parent is null (top-level), allow reordering only if that top-level area is considered allowed for organization
+
+#### B. Move item into another item
+Existing “drop onto target to become child” behavior should remain, but:
+- prevent the operation if the destination is inside a locked list
+- prevent the operation if the source comes from a locked list and moving it would alter the locked structure
+- do not allow changes that mutate the structure of locked memorized lists
+
+#### C. Locked list UI
+When a list is locked:
+- hide or disable the reorder drag handle for its child items
+- visually indicate the list is locked
+- show a lock icon on locked list rows
+- disabled drag/drop states should be clear in the UI
+- optional tooltip: “This list is locked. Reordering is disabled.”
+
+### 3. Reordering UX
+
+I want a clear reorder affordance.
+
+Implement:
+- a drag handle icon that appears on hover for list items
+- probably use an MUI icon like `DragIndicatorIcon`
+- handle should be the only place that starts sibling reordering drag
+- dropping above/below another sibling should reorder the item in that parent list
+- there should be a clear visual insertion indicator while dragging
+- keep the existing “drop onto row to make child” behavior distinct from the handle-based reorder mode
+
+Important:
+- The row body can continue to support the existing nesting drop behavior
+- The drag handle should initiate reorder mode only
+- Avoid accidental reorder when the user intended nesting, and avoid accidental nesting when the user intended reorder
+
+### 4. Memory key reorder logic
+
+This is the critical part.
+
+When reordering within the same parent list:
+- all sibling `memory_key` values under that parent must be recalculated so the ordering remains contiguous and deterministic
+
+Example:
+- Parent list has items ordered by `memory_key`
+- If an item with `memory_key = 322` is dragged so it should appear before the item with `memory_key = 108`
+- The dragged item should become `memory_key = 108`
+- The old 108 becomes 109
+- 109 becomes 110
+- and so on until the moved item's old position is removed from the sequence
+
+I want this implemented safely and consistently.
+
+Please do NOT do fragile one-off updates.
+
+Recommended implementation:
+- Fetch all siblings for the parent, ordered by `memory_key`
+- Remove the dragged item from the array
+- Insert it at the target index
+- Reassign `memory_key` values sequentially for the entire sibling set
+- Persist the full reordered set in a transaction / safe server-side operation
+
+### 5. Prefer server-side reorder RPC
+
+I do NOT want the client performing a bunch of separate update statements in a risky way.
+
+Please create a Supabase SQL function / RPC for sibling reordering.
+
+Suggested behavior:
+- Input: moved_item_id, target_item_id, insert_position (before/after)
+- Validate both items share the same parent_id
+- Validate the parent list is not locked
+- Rebuild sibling order
+- Update all affected `memory_key` values in one safe operation
+- Return success/error
+
+Also consider a separate RPC or helper for:
+- checking whether an item belongs to a locked list
+- or deriving the effective lock state from its controlling parent list
+
+### 6. React implementation details
+
+Please update the relevant tree/list item components.
+
+I likely have components around:
+- memory tree / list rows
+- drag and drop handlers
+- row rendering
+- hover controls
+- item details / editing panel
+
+Implement:
+- handle-based drag source for reorder mode
+- regular row drop target for “make child” mode
+- hover state for showing handle
+- lock icon and disabled state
+- optimistic UI only if safe; otherwise refresh after success
+- preserve existing selection / expansion behavior
+- do not break current multi-select logic if present
+- do not break current focus / navigation behavior
+
+### 7. List locking controls
+
+I need a way to mark a list as locked/unlocked.
+
+Please add:
+- a lock/unlock control in the UI for rows where `item_type = 'list'`
+- this could be in the row actions, context menu, or item details panel
+- confirmation dialog before locking:
+  - “Lock this list? Reordering and structural drag/drop changes will be disabled.”
+- unlocking should also require confirmation
+
+Important:
+- only list-type items should expose this control
+- do not show lock toggle for normal `item` rows unless there is a clear reason
+
+### 8. Top-level exception
+
+I still may want to reorganize where the main lists are located at the top level.
+
+Please design the code so that:
+- lock protection applies to memorized list contents
+- top-level organizational movement can still be allowed if appropriate
+- document clearly how you implemented this rule
+- if needed, add a helper function like `canReorderInParent(parentId)` or `canMutateStructure(itemId)`
+
+### 9. Edge cases to handle
+
+Please handle these cases carefully:
+- trying to reorder inside a locked list
+- trying to move an item into a locked list
+- trying to move an item out of a locked list
+- trying to reorder across different parents using the handle
+- dragging onto itself
+- dragging into one of its descendants
+- parent with null `parent_id` (top-level)
+- lists with large item counts, potentially 1000+ children
+- preserving stable ordering when duplicate or inconsistent memory keys already exist
+
+### 10. Performance and safety
+
+My tree can be large, so do not implement this in a way that causes major unnecessary rerenders.
+
+Please:
+- keep drag hover calculations efficient
+- avoid rebuilding the whole tree unnecessarily
+- only refresh affected branches if possible
+- use memoization where useful
+- keep the reorder logic server-authoritative
+- fail safely with user-friendly error messages
+
+### 11. Deliverables
+
+Please make the change end-to-end and show me all relevant code.
+
+I want:
+1. Supabase migration SQL
+2. Any SQL RPC/functions needed
+3. Updated React components
+4. Any hooks/helpers/utils added
+5. Any changes to item details/context menu UI for lock/unlock
+6. Clear comments in code explaining the two drag-and-drop modes
+7. A short explanation of the approach
+8. A short manual test plan
+
+### 12. Preferred implementation notes
+
+Please use these implementation preferences unless there is a strong reason not to:
+- MUI icons for lock + drag handle
+- handle-based reorder using my existing drag-and-drop system if possible
+- preserve current nesting drag/drop behavior on the row body
+- keep reorder strictly sibling-based
+- use server-side RPC for memory_key resequencing
+- make lock behavior explicit and safe over convenience
+
+### 13. Suggested acceptance criteria
+
+The task is complete when all of the following work:
+
+- I can still drag an item onto another item to make it a child
+- I can drag using a handle to reorder siblings within the same parent
+- Reordering updates all affected `memory_key` values correctly
+- Locked lists show a lock icon and do not allow reorder/nesting changes to their contents
+- I can lock and unlock a list from the UI
+- Top-level organization still works where intended
+- The UI clearly distinguishes reorder vs nesting
+- No existing core tree functionality is broken
+
+Please implement this carefully and do not simplify away the lock logic or the full `memory_key` resequencing.

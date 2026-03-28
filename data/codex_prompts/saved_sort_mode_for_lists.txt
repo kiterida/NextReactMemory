@@ -1,0 +1,208 @@
+You are working on my existing app called Memory Core.
+
+Tech stack / context:
+- Next.js + React + MUI
+- Supabase backend
+- My main content is stored in `public.memory_items`
+- The app already uses hierarchical parent/child memory items
+- Ordering currently depends on `memory_key`
+- This order is important for my memory system
+- Some rows have `item_type` such as `group`, `folder`, `item`, `list`
+- I want list-level sorting preferences to be saved in the database and applied automatically whenever that list is viewed
+
+## New feature: saved sort mode for lists
+
+I want to add a `sort_mode` field to `memory_items`.
+
+This should let a list control how its direct children are displayed.
+
+### Required sort modes for now
+1. `memory_key_asc` → existing default behavior
+2. `name_asc` → alphabetical A–Z
+3. `name_desc` → alphabetical Z–A
+
+Important:
+- The default must remain the current behavior: sort by `memory_key`
+- When I change the sort mode for a list, it must be saved in the database
+- The next time I open that list, it should still use the saved sort mode
+- This should be a per-list setting, not a global app setting
+
+## Important business rule
+
+My memory system depends on `memory_key`, so alphabetical sort should be treated as a VIEW sort, not as a destructive reorder.
+
+That means:
+- changing `sort_mode` must NOT rewrite `memory_key`
+- alphabetical sort must only change how children are displayed
+- the underlying stored `memory_key` values must remain intact
+- if I switch back to `memory_key_asc`, the original memorized order should still be there
+
+## Database changes
+
+Please add a new column to `public.memory_items`:
+
+- `sort_mode text not null default 'memory_key_asc'`
+
+This field is mainly relevant for rows that act as containers/lists, especially rows with `item_type = 'list'`, but it can safely exist on all rows in `memory_items`.
+
+Please create:
+- Supabase migration SQL
+- any type updates needed in the app
+- validation so only supported values are used
+
+Recommended supported values for now:
+- `memory_key_asc`
+- `name_asc`
+- `name_desc`
+
+If helpful, add a SQL CHECK constraint for allowed values.
+
+## Sorting behavior
+
+Implement sorting so that when a parent/list is being viewed, its direct child items are ordered according to that parent row’s `sort_mode`.
+
+### Rules
+- If parent.sort_mode = `memory_key_asc`, sort children by `memory_key ASC`
+- If parent.sort_mode = `name_asc`, sort children by `name ASC`
+- If parent.sort_mode = `name_desc`, sort children by `name DESC`
+
+Please make sorting stable and deterministic.
+
+Recommended tie breakers:
+- For `name_asc` and `name_desc`, use `memory_key` as a secondary tie breaker
+- For missing or null names, handle gracefully
+- Avoid random order when names are identical
+
+## Scope of sorting
+
+This setting should apply to the children of the list/container being viewed, not recursively force all descendants to use the same mode.
+
+Example:
+- Parent list “Animals” has sort_mode = `name_asc`
+- Its direct children are shown alphabetically
+- If child folder “Birds” has its own sort_mode = `memory_key_asc`, then opening Birds should show its own children by memory_key
+
+So each container/list should control the sort of its own direct children.
+
+## UI changes
+
+Please add a way to change the sort mode in the UI.
+
+Good places could be:
+- ItemDetailsTab when a list/container row is selected
+- row actions / context menu for list rows
+- toolbar above the current list view
+
+Use the location that best fits the current app structure, but keep it consistent with the existing MUI design.
+
+### UI requirements
+- Show the current sort mode clearly
+- Use a MUI Select or similar control
+- Only show this control for rows that can act as containers/lists
+- Persist the change immediately or on save, depending on the current architecture
+- After changing sort mode, refresh that list view so the new order is applied
+
+Suggested user-facing labels:
+- “Manual Order”
+- “Name A–Z”
+- “Name Z–A”
+
+But the stored values in DB should remain:
+- `memory_key_asc`
+- `name_asc`
+- `name_desc`
+
+## Existing drag-and-drop interaction
+
+This must work safely with my existing drag-and-drop and future reorder/lock features.
+
+Important rules:
+- `memory_key_asc` is the only mode where manual order/reorder semantics make visual sense
+- when a list is in `name_asc` or `name_desc`, manual reorder by drag handle should be disabled or hidden
+- because alphabetical mode is only a view sort, dragging to “reorder” while alphabetically sorted would be confusing
+- existing “move item into another item” nesting behavior may still remain if appropriate, but sibling reorder should not be active in alphabetical sort modes
+
+Please implement this carefully so the UI does not imply that dragging changes alphabetical order.
+
+## Data fetching / query updates
+
+Please update all relevant fetch logic so child items are ordered according to the parent’s saved `sort_mode`.
+
+That may include:
+- tree fetch helpers
+- list fetch helpers
+- RPCs like `get_children`, `fetch_memory_tree`, `get_children_with_path`, or any other current queries/helpers in the app
+- client-side sorting only if absolutely necessary, but prefer server/query-side ordering where sensible
+
+Important:
+- if the app currently assumes all children are always ordered by `memory_key`, update that assumption carefully
+- do not break test/revision features that rely on actual `memory_key`
+- study/test logic should still use the underlying memorization order where appropriate, even if a UI list is currently displayed alphabetically
+
+## Critical business rule for testing/revision features
+
+My study and revision system depends on `memory_key`.
+
+So:
+- UI display sort can be alphabetical
+- but any memory-testing mode that depends on sequence should continue using the original `memory_key` order unless explicitly designed otherwise
+
+Please review existing tester/revision logic and make sure this new display sort mode does not accidentally change the memorization/testing sequence.
+
+If needed:
+- keep “display sort” separate from “test order”
+- add clear comments in code where this distinction matters
+
+## Edge cases to handle
+
+Please handle these carefully:
+- rows with null or empty `name`
+- duplicate names
+- mixed uppercase/lowercase names
+- parent rows without explicit `sort_mode` yet during migration
+- lists with many children
+- switching sort mode while the list is open
+- compatibility with locked lists and reorder restrictions
+- preserving original `memory_key` ordering when returning to manual order
+
+If appropriate, use case-insensitive alphabetical sorting.
+
+## Suggested implementation approach
+
+Please implement with a safe, explicit design:
+1. Add `sort_mode` column with default `memory_key_asc`
+2. Update app types
+3. Update parent/list settings UI to edit the field
+4. Update child-fetch/display logic to sort according to parent.sort_mode
+5. Disable sibling reorder UI when sort_mode is not `memory_key_asc`
+6. Keep test/revision flows based on underlying `memory_key`
+
+## Deliverables
+
+Please make the change end-to-end and show all relevant code.
+
+I want:
+1. Supabase migration SQL
+2. Any constraint / helper SQL if used
+3. Updated React components
+4. Updated data-fetching/query logic
+5. Any updated hooks/helpers/utils
+6. Clear comments explaining the difference between display sort and memorization order
+7. A short explanation of the approach
+8. A short manual test plan
+
+## Acceptance criteria
+
+The task is complete when:
+
+- Every list/container can store a `sort_mode`
+- Default behavior remains `memory_key_asc`
+- I can change a list to “Name A–Z” or “Name Z–A”
+- The selected sort mode is saved and persists across reloads
+- Switching to alphabetical sort does NOT rewrite `memory_key`
+- Switching back to manual order restores the original `memory_key` display order
+- Manual sibling reorder UI is disabled/hidden while alphabetical sort is active
+- Existing nesting and tree functionality still works
+- Testing/revision logic still uses the true memorization order based on `memory_key`
+
+Please implement this carefully and do not simplify it into a destructive reorder. Alphabetical sort must be a saved display mode only.

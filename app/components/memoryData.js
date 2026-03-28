@@ -26,11 +26,28 @@ export const MEMORY_ITEM_TYPES = {
   ITEM: 'item',
 };
 
+export const MEMORY_SORT_MODES = {
+  MEMORY_KEY_ASC: 'memory_key_asc',
+  NAME_ASC: 'name_asc',
+  NAME_DESC: 'name_desc',
+};
+
+export const DEFAULT_MEMORY_SORT_MODE = MEMORY_SORT_MODES.MEMORY_KEY_ASC;
+
+export const MEMORY_SORT_MODE_OPTIONS = [
+  { value: MEMORY_SORT_MODES.MEMORY_KEY_ASC, label: 'Manual Order' },
+  { value: MEMORY_SORT_MODES.NAME_ASC, label: 'Name A-Z' },
+  { value: MEMORY_SORT_MODES.NAME_DESC, label: 'Name Z-A' },
+];
+
+const SUPPORTED_MEMORY_SORT_MODES = new Set(Object.values(MEMORY_SORT_MODES));
+
 const DEFAULT_MEMORY_ITEM_SELECT = `
   id,
   parent_id,
   list_id,
   item_type,
+  sort_mode,
   is_locked,
   is_testable,
   memory_key,
@@ -46,6 +63,10 @@ const DEFAULT_MEMORY_ITEM_SELECT = `
 `;
 
 const MAX_SORT_VALUE = Number.MAX_SAFE_INTEGER;
+const NAME_COLLATOR = new Intl.Collator(undefined, {
+  sensitivity: 'base',
+  numeric: true,
+});
 const MEMORY_ITEM_WEB_LINK_SELECT = `
   id,
   memory_item_id,
@@ -70,12 +91,7 @@ const getEffectiveTreeSortValue = (item) => {
   return toSortableNumber(item?.memory_key ?? item?.row_order);
 };
 
-export const compareMemoryTreeItems = (a, b) => {
-  const primaryDifference = getEffectiveTreeSortValue(a) - getEffectiveTreeSortValue(b);
-  if (primaryDifference !== 0) {
-    return primaryDifference;
-  }
-
+const compareByMemoryKey = (a, b) => {
   const memoryKeyDifference = toSortableNumber(a?.memory_key) - toSortableNumber(b?.memory_key);
   if (memoryKeyDifference !== 0) {
     return memoryKeyDifference;
@@ -89,6 +105,20 @@ export const compareMemoryTreeItems = (a, b) => {
   return toSortableNumber(a?.id) - toSortableNumber(b?.id);
 };
 
+const getNormalizedSortableName = (item) => {
+  const rawName = typeof item?.name === 'string' ? item.name.trim() : '';
+  return rawName;
+};
+
+export const compareMemoryTreeItems = (a, b) => {
+  const primaryDifference = getEffectiveTreeSortValue(a) - getEffectiveTreeSortValue(b);
+  if (primaryDifference !== 0) {
+    return primaryDifference;
+  }
+
+  return compareByMemoryKey(a, b);
+};
+
 export const sortMemoryTreeNodes = (nodes = []) =>
   [...nodes]
     .map((node) => ({
@@ -96,6 +126,52 @@ export const sortMemoryTreeNodes = (nodes = []) =>
       children: Array.isArray(node.children) ? sortMemoryTreeNodes(node.children) : node.children,
     }))
     .sort(compareMemoryTreeItems);
+
+export const normalizeMemorySortMode = (value) =>
+  SUPPORTED_MEMORY_SORT_MODES.has(value) ? value : DEFAULT_MEMORY_SORT_MODE;
+
+export const compareMemoryItemsForDisplay = (sortMode, a, b) => {
+  const normalizedSortMode = normalizeMemorySortMode(sortMode);
+
+  if (normalizedSortMode === MEMORY_SORT_MODES.MEMORY_KEY_ASC) {
+    return compareMemoryTreeItems(a, b);
+  }
+
+  const aName = getNormalizedSortableName(a);
+  const bName = getNormalizedSortableName(b);
+  const aHasName = aName.length > 0;
+  const bHasName = bName.length > 0;
+
+  if (aHasName !== bHasName) {
+    return aHasName ? -1 : 1;
+  }
+
+  if (aHasName && bHasName) {
+    const nameComparison = NAME_COLLATOR.compare(aName, bName);
+    if (nameComparison !== 0) {
+      return normalizedSortMode === MEMORY_SORT_MODES.NAME_DESC ? -nameComparison : nameComparison;
+    }
+  }
+
+  return compareByMemoryKey(a, b);
+};
+
+export const sortMemoryNodesForDisplay = (
+  nodes = [],
+  parentSortMode = DEFAULT_MEMORY_SORT_MODE
+) => {
+  const normalizedParentSortMode = normalizeMemorySortMode(parentSortMode);
+
+  return [...nodes]
+    .map((node) => ({
+      ...node,
+      sort_mode: normalizeMemorySortMode(node?.sort_mode),
+      children: Array.isArray(node.children)
+        ? sortMemoryNodesForDisplay(node.children, node?.sort_mode)
+        : node.children,
+    }))
+    .sort((a, b) => compareMemoryItemsForDisplay(normalizedParentSortMode, a, b));
+};
 
 const normalizeSearchValue = (value) => {
   if (value === null || value === undefined) {
@@ -111,6 +187,10 @@ export const isFolderNode = (item) =>
   item?.item_type === MEMORY_ITEM_TYPES.FOLDER ||
   item?.item_type === MEMORY_ITEM_TYPES.SPLITTER_FOLDER;
 export const isMemoryEntryNode = (item) => item?.item_type === MEMORY_ITEM_TYPES.ITEM;
+export const isMemoryContainerNode = (item) =>
+  isGroupingNode(item) ||
+  isMemoryListNode(item) ||
+  isFolderNode(item);
 
 const buildMemoryItemMap = (items = []) => {
   const itemMap = new Map();
@@ -558,6 +638,8 @@ export async function getTestableNodesForList(listId) {
 
   const descendants = await getListDescendants(listId);
 
+  // Tests deliberately stay on true memorization order (`memory_key`). Display sort
+  // preferences belong to list browsing, not revision/test sequencing.
   // Keep tests scoped to the selected logical list and drop any branch that passes through a group.
   return filterGroupedBranchesFromTestableNodes(descendants ?? []);
 }
