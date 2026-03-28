@@ -1,12 +1,20 @@
-'use client';
+﻿'use client';
 
 import * as React from 'react';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import Alert from '@mui/material/Alert';
+import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CircularProgress from '@mui/material/CircularProgress';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
 import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
@@ -17,9 +25,10 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import Autocomplete from '@mui/material/Autocomplete';
 import {
+  deleteTimeTrackingSession,
   fetchMemoryItemOptions,
   fetchTimeTrackingSessions,
   formatDuration,
@@ -61,6 +70,9 @@ export default function TimeSessionsPage() {
   const [sessions, setSessions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [successMessage, setSuccessMessage] = React.useState('');
+  const [sessionToDelete, setSessionToDelete] = React.useState(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   const loadMemoryItems = React.useCallback(async (searchTerm = '') => {
     setMemoryItemLoading(true);
@@ -102,6 +114,27 @@ export default function TimeSessionsPage() {
     void loadSessions();
   }, [loadSessions]);
 
+  const handleDeleteSession = React.useCallback(async () => {
+    if (!sessionToDelete?.id) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      await deleteTimeTrackingSession(sessionToDelete.id);
+      setSessions((currentSessions) => currentSessions.filter((session) => session.id !== sessionToDelete.id));
+      setSuccessMessage('Time session deleted.');
+      setSessionToDelete(null);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete time session.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [sessionToDelete]);
+
   const totals = React.useMemo(() => getDateBucketTotals(sessions), [sessions]);
 
   return (
@@ -114,6 +147,7 @@ export default function TimeSessionsPage() {
       </Box>
 
       {error ? <Alert severity="error">{error}</Alert> : null}
+      {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -207,12 +241,13 @@ export default function TimeSessionsPage() {
               <TableCell>Alert threshold</TableCell>
               <TableCell>Alert triggered</TableCell>
               <TableCell>Stop reason</TableCell>
+              <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={10}>
                   <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ py: 4 }}>
                     <CircularProgress size={22} />
                     <Typography>Loading sessions...</Typography>
@@ -221,7 +256,7 @@ export default function TimeSessionsPage() {
               </TableRow>
             ) : sessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={10}>
                   <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                     No sessions found for the current filters.
                   </Typography>
@@ -245,12 +280,53 @@ export default function TimeSessionsPage() {
                       : 'No'}
                   </TableCell>
                   <TableCell>{session.stop_reason || (session.is_running ? 'running' : '-')}</TableCell>
+                  <TableCell align="right">
+                    <Tooltip title={session.is_running ? 'Stop the running session before deleting it.' : 'Delete session'}>
+                      <span>
+                        <IconButton
+                          color="error"
+                          size="small"
+                          disabled={session.is_running || isDeleting}
+                          onClick={() => {
+                            setError('');
+                            setSuccessMessage('');
+                            setSessionToDelete(session);
+                          }}
+                          aria-label={`Delete time session ${session.id}`}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Dialog open={Boolean(sessionToDelete)} onClose={() => (isDeleting ? null : setSessionToDelete(null))} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete time session?</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1}>
+            <Typography>
+              This will permanently remove the selected time session.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {sessionToDelete?.memory_item_name || 'Unlinked'}
+              {sessionToDelete?.title ? ` • ${sessionToDelete.title}` : ''}
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSessionToDelete(null)} disabled={isDeleting}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDeleteSession} disabled={isDeleting}>
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }
+

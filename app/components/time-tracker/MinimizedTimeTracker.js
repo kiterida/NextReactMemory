@@ -37,7 +37,6 @@ export default function MinimizedTimeTracker() {
   }
 
   const duration = Math.max(0, Math.round((now - new Date(activeSession.started_at).getTime()) / 1000));
-  const memoryItemLabel = activeSession.memory_item_name || activeSession.title || 'Unlinked session';
   const overdueSeconds = getOverdueSeconds(activeSession, duration);
   const isOverdue = overdueSeconds > 0;
 
@@ -50,18 +49,18 @@ export default function MinimizedTimeTracker() {
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: (theme) => theme.zIndex.modal + 1,
-        px: 2,
+        px: 1.5,
         py: 1,
-        borderRadius: 999,
-        minWidth: 320,
+        borderRadius: 2,
+        minWidth: 240,
         maxWidth: 'calc(100vw - 32px)',
         border: isOverdue ? '1px solid' : 'none',
         borderColor: isOverdue ? 'warning.main' : 'transparent',
       }}
     >
-      <Stack direction="row" spacing={1.5} alignItems="center">
+      <Stack direction="row" spacing={1} alignItems="center">
         <Stack spacing={0.25} sx={{ minWidth: 0, flex: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
             <Typography variant="caption" color="text.secondary">
               Running now
             </Typography>
@@ -70,21 +69,18 @@ export default function MinimizedTimeTracker() {
                 size="small"
                 color="warning"
                 icon={<WarningAmberIcon />}
-                label={`Overdue by ${formatDuration(overdueSeconds)}`}
+                label={`Overdue ${formatDuration(overdueSeconds)}`}
               />
             ) : null}
           </Stack>
           <Typography variant="h6" sx={{ lineHeight: 1.1 }}>
             {formatDuration(duration)}
           </Typography>
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {memoryItemLabel}
-          </Typography>
         </Stack>
 
         <Tooltip title="Open tracker">
-          <IconButton onClick={openDialog} aria-label="Open tracker">
-            <OpenInFullIcon />
+          <IconButton onClick={openDialog} aria-label="Open tracker" size="small">
+            <OpenInFullIcon fontSize="small" />
           </IconButton>
         </Tooltip>
 
@@ -95,8 +91,9 @@ export default function MinimizedTimeTracker() {
               onClick={() => stopSession('manual')}
               disabled={isSaving}
               aria-label="Stop timer"
+              size="small"
             >
-              <StopCircleIcon />
+              <StopCircleIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>

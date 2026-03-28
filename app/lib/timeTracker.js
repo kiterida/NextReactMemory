@@ -1,4 +1,4 @@
-import { supabase } from '../components/supabaseClient';
+﻿import { supabase } from '../components/supabaseClient';
 
 export const TIME_TRACKING_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 export const TIME_TRACKING_AUTO_STOP_GRACE_MS = 60 * 1000;
@@ -108,6 +108,11 @@ export function getElapsedDurationSeconds(startedAt, endedAt = null) {
 export function getSessionDurationSeconds(session) {
   if (!session) {
     return 0;
+  }
+
+  // Running sessions must always derive elapsed time from timestamps.
+  if (session.is_running) {
+    return getElapsedDurationSeconds(session.started_at, null);
   }
 
   if (Number.isFinite(Number(session.duration_seconds))) {
@@ -400,6 +405,34 @@ export async function fetchTimeTrackingSessions(filters = {}) {
   return enrichSessionsWithMemoryItems(data ?? []);
 }
 
+export async function deleteTimeTrackingSession(sessionId) {
+  const normalizedId = toNullableNumber(sessionId);
+  if (normalizedId === null) {
+    throw new Error('Time tracking session id is required.');
+  }
+
+  const session = await fetchTimeTrackingSessionById(normalizedId);
+  if (!session) {
+    return null;
+  }
+
+  if (session.is_running) {
+    throw new Error('Stop the running session before deleting it.');
+  }
+
+  const { error } = await supabase
+    .from('time_tracking_sessions')
+    .delete()
+    .eq('id', normalizedId);
+
+  if (error) {
+    throw new Error(formatSupabaseError(error, 'Failed to delete time tracking session.'));
+  }
+
+  return session;
+}
+
+
 export function getDateBucketTotals(sessions = [], now = new Date()) {
   const nowDate = new Date(now);
   const startOfToday = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
@@ -431,3 +464,5 @@ export function getDateBucketTotals(sessions = [], now = new Date()) {
     { today: 0, thisWeek: 0, thisMonth: 0 }
   );
 }
+
+
