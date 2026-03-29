@@ -3,17 +3,10 @@
 import * as React from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
 import Snackbar from '@mui/material/Snackbar';
 import {
   DEFAULT_TIME_TRACKING_ALERT_THRESHOLD_MINUTES,
   TIME_TRACKING_ACTIVITY_SYNC_MS,
-  TIME_TRACKING_AUTO_STOP_GRACE_MS,
-  TIME_TRACKING_INACTIVITY_TIMEOUT_MS,
   fetchMemoryItemOptions,
   fetchTimeTrackingSessionById,
   formatDuration,
@@ -54,10 +47,6 @@ export default function TimeTrackerProvider({ children }) {
   const [elapsedNowSeconds, setElapsedNowSeconds] = React.useState(0);
   const [memoryItemOptions, setMemoryItemOptions] = React.useState([]);
   const [memoryItemOptionsLoading, setMemoryItemOptionsLoading] = React.useState(false);
-  const [warningOpen, setWarningOpen] = React.useState(false);
-  const [warningCountdownSeconds, setWarningCountdownSeconds] = React.useState(
-    Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000)
-  );
   const [snackbarState, setSnackbarState] = React.useState({
     open: false,
     severity: 'success',
@@ -65,37 +54,16 @@ export default function TimeTrackerProvider({ children }) {
   });
 
   const hydrationCompleteRef = React.useRef(false);
-  const inactivityWarningTimeoutRef = React.useRef(null);
-  const inactivityAutoStopTimeoutRef = React.useRef(null);
-  const warningCountdownIntervalRef = React.useRef(null);
   const saveDraftTimeoutRef = React.useRef(null);
   const lastActivityAtRef = React.useRef(Date.now());
   const lastActivitySyncedAtRef = React.useRef(0);
   const activeSessionRef = React.useRef(null);
   const draftRef = React.useRef(createDefaultDraft());
-  const stopSessionRef = React.useRef(null);
   const alertTriggerInFlightRef = React.useRef(null);
   const titleBaseRef = React.useRef('');
 
   const showSnackbar = React.useCallback((message, severity = 'success') => {
     setSnackbarState({ open: true, severity, message });
-  }, []);
-
-  const clearInactivityTimers = React.useCallback(() => {
-    if (inactivityWarningTimeoutRef.current) {
-      window.clearTimeout(inactivityWarningTimeoutRef.current);
-      inactivityWarningTimeoutRef.current = null;
-    }
-
-    if (inactivityAutoStopTimeoutRef.current) {
-      window.clearTimeout(inactivityAutoStopTimeoutRef.current);
-      inactivityAutoStopTimeoutRef.current = null;
-    }
-
-    if (warningCountdownIntervalRef.current) {
-      window.clearInterval(warningCountdownIntervalRef.current);
-      warningCountdownIntervalRef.current = null;
-    }
   }, []);
 
   const syncLastActivity = React.useCallback(async (force = false) => {
@@ -149,55 +117,15 @@ export default function TimeTrackerProvider({ children }) {
     }
   }, [showSnackbar]);
 
-  const resetInactivityTimers = React.useCallback(() => {
-    clearInactivityTimers();
-    setWarningOpen(false);
-    setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
-
-    if (!activeSessionRef.current) {
-      return;
-    }
-
-    const getIdleMs = () => Date.now() - lastActivityAtRef.current;
-    const warningDelayMs = Math.max(0, TIME_TRACKING_INACTIVITY_TIMEOUT_MS - getIdleMs());
-
-    inactivityWarningTimeoutRef.current = window.setTimeout(() => {
-      if (getIdleMs() < TIME_TRACKING_INACTIVITY_TIMEOUT_MS) {
-        resetInactivityTimers();
-        return;
-      }
-
-      setWarningOpen(true);
-
-      const warningEndsAt = lastActivityAtRef.current + TIME_TRACKING_INACTIVITY_TIMEOUT_MS + TIME_TRACKING_AUTO_STOP_GRACE_MS;
-      setWarningCountdownSeconds(Math.max(0, Math.ceil((warningEndsAt - Date.now()) / 1000)));
-
-      warningCountdownIntervalRef.current = window.setInterval(() => {
-        const remainingSeconds = Math.max(0, Math.ceil((warningEndsAt - Date.now()) / 1000));
-        setWarningCountdownSeconds(remainingSeconds);
-      }, 1000);
-
-      inactivityAutoStopTimeoutRef.current = window.setTimeout(() => {
-        if (getIdleMs() >= TIME_TRACKING_INACTIVITY_TIMEOUT_MS + TIME_TRACKING_AUTO_STOP_GRACE_MS) {
-          stopSessionRef.current?.('inactivity');
-          return;
-        }
-
-        resetInactivityTimers();
-      }, TIME_TRACKING_AUTO_STOP_GRACE_MS);
-    }, warningDelayMs);
-  }, [clearInactivityTimers]);
-
   const markActivity = React.useCallback(() => {
     if (!activeSessionRef.current) {
       return;
     }
 
     lastActivityAtRef.current = Date.now();
-    resetInactivityTimers();
     void prepareTimeTrackerAlertSound({ unlock: true });
     void syncLastActivity(false);
-  }, [resetInactivityTimers, syncLastActivity]);
+  }, [syncLastActivity]);
 
   const loadMemoryItemOptions = React.useCallback(async (searchTerm = '') => {
     setMemoryItemOptionsLoading(true);
@@ -416,24 +344,11 @@ export default function TimeTrackerProvider({ children }) {
       for (const eventName of activityEvents) {
         window.removeEventListener(eventName, handleActivity);
       }
-      clearInactivityTimers();
       if (saveDraftTimeoutRef.current) {
         window.clearTimeout(saveDraftTimeoutRef.current);
       }
     };
-  }, [clearInactivityTimers, markActivity]);
-
-  React.useEffect(() => {
-    if (activeSession) {
-      resetInactivityTimers();
-      return undefined;
-    }
-
-    clearInactivityTimers();
-    setWarningOpen(false);
-    setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
-    return undefined;
-  }, [activeSession, clearInactivityTimers, resetInactivityTimers]);
+  }, [markActivity]);
 
   React.useEffect(() => {
     if (!activeSession?.id) {
@@ -517,14 +432,13 @@ export default function TimeTrackerProvider({ children }) {
       setMinimized(false);
       lastActivityAtRef.current = Date.now();
       lastActivitySyncedAtRef.current = 0;
-      resetInactivityTimers();
       showSnackbar('Time tracking session started.');
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : 'Failed to start time tracking session.');
     } finally {
       setIsSaving(false);
     }
-  }, [resetInactivityTimers, showSnackbar]);
+  }, [showSnackbar]);
 
   const stopSession = React.useCallback(async (stopReason = 'manual') => {
     if (!activeSessionRef.current?.id) {
@@ -552,32 +466,16 @@ export default function TimeTrackerProvider({ children }) {
       });
 
       setActiveSession(null);
-      setWarningOpen(false);
-      setWarningCountdownSeconds(Math.ceil(TIME_TRACKING_AUTO_STOP_GRACE_MS / 1000));
       setDraft(createDefaultDraft());
-      setIsDialogOpen(stopReason !== 'manual');
+      setIsDialogOpen(false);
       setMinimized(false);
-      clearInactivityTimers();
-      showSnackbar(
-        stopReason === 'inactivity'
-          ? `Timer stopped for inactivity after ${formatDuration(getSessionDurationSeconds(stoppedSession))}.`
-          : 'Time tracking session stopped.'
-      );
+      showSnackbar('Time tracking session stopped.');
     } catch (stopError) {
       setError(stopError instanceof Error ? stopError.message : 'Failed to stop time tracking session.');
     } finally {
       setIsSaving(false);
     }
-  }, [clearInactivityTimers, showSnackbar, triggerDurationAlert]);
-
-  stopSessionRef.current = stopSession;
-
-  const continueAfterWarning = React.useCallback(() => {
-    lastActivityAtRef.current = Date.now();
-    setWarningOpen(false);
-    resetInactivityTimers();
-    void syncLastActivity(true);
-  }, [resetInactivityTimers, syncLastActivity]);
+  }, [showSnackbar, triggerDurationAlert]);
 
   const isOverThreshold = React.useMemo(
     () => isSessionOverThreshold(activeSession, elapsedNowSeconds),
@@ -627,19 +525,6 @@ export default function TimeTrackerProvider({ children }) {
       {children}
       <TimeTrackerDialog />
       <MinimizedTimeTracker />
-
-      <Dialog open={warningOpen} onClose={() => {}} maxWidth="xs" fullWidth>
-        <DialogTitle>No activity detected. Stop timer?</DialogTitle>
-        <DialogContent dividers>
-          The current session will stop automatically in {warningCountdownSeconds} seconds if you do nothing.
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={continueAfterWarning}>Continue</Button>
-          <Button color="error" variant="contained" onClick={() => stopSession('inactivity')}>
-            Stop
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Snackbar
         open={snackbarState.open}
