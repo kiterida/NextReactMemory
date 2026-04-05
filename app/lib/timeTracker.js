@@ -1,4 +1,4 @@
-﻿import { supabase } from '../components/supabaseClient';
+import { supabase } from '../components/supabaseClient';
 
 export const TIME_TRACKING_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 export const TIME_TRACKING_AUTO_STOP_GRACE_MS = 60 * 1000;
@@ -124,15 +124,21 @@ export function getSessionDurationSeconds(session) {
 
 export function formatDuration(durationSeconds) {
   const totalSeconds = Math.max(0, Number(durationSeconds) || 0);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
 
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  if (days > 0) {
+    return `${days}d ${hours}h`;
   }
 
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  if (totalHours > 0) {
+    return `${totalHours}h ${minutes}m`;
+  }
+
+  return `${totalMinutes}m`;
 }
 
 export function formatThresholdMinutes(value) {
@@ -242,6 +248,11 @@ export async function updateTimeTrackingSession(sessionId, updates) {
     throw new Error('Time tracking session id is required.');
   }
 
+  const existingSession = await fetchTimeTrackingSessionById(normalizedId);
+  if (!existingSession) {
+    throw new Error('Time tracking session not found.');
+  }
+
   const updatePayload = {};
 
   if (Object.prototype.hasOwnProperty.call(updates, 'memory_item_id')) {
@@ -254,6 +265,26 @@ export async function updateTimeTrackingSession(sessionId, updates) {
 
   if (Object.prototype.hasOwnProperty.call(updates, 'notes')) {
     updatePayload.notes = updates.notes ? String(updates.notes).trim() : null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'started_at')) {
+    updatePayload.started_at = updates.started_at ?? null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'ended_at')) {
+    updatePayload.ended_at = updates.ended_at ?? null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'duration_seconds')) {
+    updatePayload.duration_seconds = toNullableInteger(updates.duration_seconds);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'is_running')) {
+    updatePayload.is_running = Boolean(updates.is_running);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'stop_reason')) {
+    updatePayload.stop_reason = updates.stop_reason ? String(updates.stop_reason).trim() : null;
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'last_activity_at')) {
@@ -272,6 +303,32 @@ export async function updateTimeTrackingSession(sessionId, updates) {
     updatePayload.alert_triggered_at = updates.alert_triggered_at ?? null;
   }
 
+  const nextStartedAt = Object.prototype.hasOwnProperty.call(updatePayload, 'started_at')
+    ? updatePayload.started_at
+    : existingSession.started_at;
+  const nextIsRunning = Object.prototype.hasOwnProperty.call(updatePayload, 'is_running')
+    ? updatePayload.is_running
+    : Boolean(existingSession.is_running);
+  const nextEndedAt = nextIsRunning
+    ? null
+    : Object.prototype.hasOwnProperty.call(updatePayload, 'ended_at')
+      ? updatePayload.ended_at
+      : existingSession.ended_at;
+
+  if (nextIsRunning) {
+    updatePayload.ended_at = null;
+    updatePayload.duration_seconds = null;
+    updatePayload.stop_reason = null;
+  } else {
+    updatePayload.ended_at = nextEndedAt;
+
+    if (nextStartedAt && nextEndedAt) {
+      updatePayload.duration_seconds = getElapsedDurationSeconds(nextStartedAt, nextEndedAt);
+    } else if (!Object.prototype.hasOwnProperty.call(updatePayload, 'duration_seconds')) {
+      updatePayload.duration_seconds = null;
+    }
+  }
+
   const { data, error } = await supabase
     .from('time_tracking_sessions')
     .update(updatePayload)
@@ -281,6 +338,40 @@ export async function updateTimeTrackingSession(sessionId, updates) {
 
   if (error) {
     throw new Error(formatSupabaseError(error, 'Failed to update time tracking session.'));
+  }
+
+  const [enrichedSession] = await enrichSessionsWithMemoryItems([data]);
+  return enrichedSession;
+}
+
+export async function createTimeTrackingSession(payload = {}) {
+  const startedAt = payload.startedAt ?? new Date().toISOString();
+  const endedAt = payload.endedAt ?? startedAt;
+  const durationSeconds = getElapsedDurationSeconds(startedAt, endedAt);
+
+  const insertPayload = {
+    memory_item_id: toNullableNumber(payload.memoryItemId),
+    title: payload.title ? String(payload.title).trim() : null,
+    notes: payload.notes ? String(payload.notes).trim() : null,
+    started_at: startedAt,
+    ended_at: endedAt,
+    duration_seconds: durationSeconds,
+    is_running: false,
+    stop_reason: payload.stopReason ? String(payload.stopReason).trim() : 'manual-entry',
+    last_activity_at: endedAt,
+    alert_threshold_minutes: toNullableInteger(payload.alertThresholdMinutes),
+    alert_triggered: false,
+    alert_triggered_at: null,
+  };
+
+  const { data, error } = await supabase
+    .from('time_tracking_sessions')
+    .insert(insertPayload)
+    .select(TIME_TRACKING_SESSION_SELECT)
+    .single();
+
+  if (error) {
+    throw new Error(formatSupabaseError(error, 'Failed to create time tracking session.'));
   }
 
   const [enrichedSession] = await enrichSessionsWithMemoryItems([data]);
@@ -447,6 +538,8 @@ export function getDateBucketTotals(sessions = [], now = new Date()) {
       const startedAt = new Date(session.started_at);
       const durationSeconds = getSessionDurationSeconds(session);
 
+      totals.allTime += durationSeconds;
+
       if (startedAt >= startOfToday) {
         totals.today += durationSeconds;
       }
@@ -461,8 +554,12 @@ export function getDateBucketTotals(sessions = [], now = new Date()) {
 
       return totals;
     },
-    { today: 0, thisWeek: 0, thisMonth: 0 }
+    { today: 0, thisWeek: 0, thisMonth: 0, allTime: 0 }
   );
 }
+
+
+
+
 
 

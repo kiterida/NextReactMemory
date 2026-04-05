@@ -2,6 +2,31 @@
 
 Run `npm run dev` to work on the project.
 
+## Tell Codex that you are switching to working on this app
+
+Switch context to my Memory App.
+
+This project uses:
+- Next.js
+- React
+- MUI
+- Supabase
+
+Main concepts:
+- hierarchical memory system
+- `memory_items` table
+- tree views
+- item details
+- study/revision features
+
+Important:
+- This is NOT my Electron app
+- Do not use Electron or SQLite assumptions
+- Keep all solutions aligned with Next.js, React, MUI, and Supabase
+- Reuse existing code patterns
+- Make minimal clean changes
+- Preserve current functionality unless I ask otherwise
+
 ## Dashboard widget system
 
 Suggested file structure for the widget system:
