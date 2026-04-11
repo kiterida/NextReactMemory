@@ -35,6 +35,13 @@ export const TREE_ITEM_NEST_DND_TYPE = 'TREE_ITEM_NEST';
 export const TREE_ITEM_REORDER_DND_TYPE = 'TREE_ITEM_REORDER';
 
 const ITEM_TYPE_OPTIONS = Object.values(MEMORY_ITEM_TYPES);
+const ITEM_TYPE_DESCRIPTIONS = {
+  [MEMORY_ITEM_TYPES.GROUP]: 'Top-level grouping branch. Use this to organize lists and other sections.',
+  [MEMORY_ITEM_TYPES.LIST]: 'A memorization list root. Its descendants belong to the same study/revision list.',
+  [MEMORY_ITEM_TYPES.FOLDER]: 'A folder inside a list that helps structure related memory items.',
+  [MEMORY_ITEM_TYPES.SPLITTER_FOLDER]: 'A non-testable structural divider that separates sections inside a list.',
+  [MEMORY_ITEM_TYPES.ITEM]: 'A standard memory entry. Use this for the actual content you want to learn or revise.',
+};
 
 const DraggableTreeItem = ({
   item,
@@ -542,6 +549,27 @@ const DraggableTreeItem = ({
               ))}
             </Select>
           </FormControl>
+          <Box sx={{ mt: 2, display: 'grid', gap: 1.25 }}>
+            {ITEM_TYPE_OPTIONS.map((option) => (
+              <Box
+                key={`${option}-description`}
+                sx={(theme) => ({
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  border: '1px solid',
+                  borderColor:
+                    option === selectedItemType ? theme.palette.primary.main : theme.palette.divider,
+                  backgroundColor:
+                    option === selectedItemType ? theme.palette.action.selected : 'transparent',
+                })}
+              >
+                <Typography variant="subtitle2">{option}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {ITEM_TYPE_DESCRIPTIONS[option]}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={closeItemTypeDialog} disabled={isSavingItemType}>

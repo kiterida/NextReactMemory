@@ -481,16 +481,7 @@ const getDefaultNodeTypeForParent = (parentItem) => {
     return MEMORY_ITEM_TYPES.GROUP;
   }
 
-  const parentType = parentItem.item_type;
-  if (
-    parentType === MEMORY_ITEM_TYPES.LIST ||
-    parentType === MEMORY_ITEM_TYPES.FOLDER ||
-    parentType === MEMORY_ITEM_TYPES.SPLITTER_FOLDER
-  ) {
-    return MEMORY_ITEM_TYPES.ITEM;
-  }
-
-  return MEMORY_ITEM_TYPES.GROUP;
+  return MEMORY_ITEM_TYPES.ITEM;
 };
 
 const resolveListIdForNode = (parentItem, itemType, insertedId = null) => {
@@ -1120,6 +1111,20 @@ export const createMemoryNode = async ({
   if (error) {
     console.error('Error creating memory node:', error);
     throw error;
+  }
+
+  if (parentItem?.item_type === MEMORY_ITEM_TYPES.ITEM) {
+    const { error: parentTypeUpdateError } = await supabase
+      .from('memory_items')
+      .update({
+        item_type: MEMORY_ITEM_TYPES.FOLDER,
+      })
+      .eq('id', Number(parentItem.id));
+
+    if (parentTypeUpdateError) {
+      console.error('Error promoting parent item to folder:', parentTypeUpdateError);
+      throw parentTypeUpdateError;
+    }
   }
 
   if (resolvedItemType === MEMORY_ITEM_TYPES.LIST) {

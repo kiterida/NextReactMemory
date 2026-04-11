@@ -305,6 +305,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const apiRef = useTreeViewApiRef();
 
   const [treeData, setTreeData] = useState<MemoryTreeItem[]>([]);
+  const treeDataRef = useRef<MemoryTreeItem[]>([]);
   //const [treeData, setTreeData] = useState([]);
 
   const [selectedItem, setSelectedItem] = useState<MemoryItem | null>(null);
@@ -342,6 +343,10 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
   const [expandedItems, setExpandedItems] = React.useState<string[]>([]);
   const itemDetailsDraftGetterRef = useRef<ItemDetailsDraftGetter | null>(null);
+
+  useEffect(() => {
+    treeDataRef.current = treeData;
+  }, [treeData]);
 
 
   
@@ -513,10 +518,35 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       return;
     }
 
+    const cloneTreeNodes = (nodes?: MemoryTreeItem[]): MemoryTreeItem[] | undefined =>
+      Array.isArray(nodes)
+        ? nodes.map((node) => ({
+            ...node,
+            children: cloneTreeNodes(node.children),
+          }))
+        : nodes;
+
+    const existingNodeMap = new Map<string, MemoryTreeItem>();
+    const addNodesToMap = (nodes?: MemoryTreeItem[]) => {
+      if (!Array.isArray(nodes)) {
+        return;
+      }
+
+      for (const node of nodes) {
+        existingNodeMap.set(String(node.id), node);
+        addNodesToMap(node.children);
+      }
+    };
+
+    addNodesToMap(treeDataRef.current);
+
     const nodeMap = new Map<string, MemoryTreeItem>();
     const mergedRoots: MemoryTreeItem[] = roots.map((r) => ({
+      ...(existingNodeMap.get(String(r.id)) ?? {}),
       ...r,
-      children: Array.isArray(r.children) ? [...r.children] : r.children,
+      children: cloneTreeNodes(
+        Array.isArray(r.children) ? r.children : existingNodeMap.get(String(r.id))?.children
+      ),
     }));
 
     for (const root of mergedRoots) {
@@ -531,18 +561,29 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         existing.description = pathNode.description;
         existing.rich_text = pathNode.rich_text;
         existing.parent_id = pathNode.parent_id;
+        existing.list_id = pathNode.list_id;
+        existing.item_type = pathNode.item_type;
         existing.sort_mode = normalizeMemorySortMode(pathNode.sort_mode);
         existing.is_locked = pathNode.is_locked;
+        existing.is_testable = pathNode.is_testable;
         existing.code_snippet = pathNode.code_snippet;
         existing.memory_key = pathNode.memory_key;
         existing.row_order = pathNode.row_order;
         existing.memory_image = pathNode.memory_image;
         existing.header_image = pathNode.header_image;
         existing.starred = pathNode.starred;
+        existing.memory_list_key = pathNode.memory_list_key;
         existing.has_children = pathNode.has_children;
         existing.child_count = pathNode.child_count;
       } else {
-        nodeMap.set(pathNode.id, { ...pathNode, children: [] });
+        const existingNode = existingNodeMap.get(pathNode.id);
+        nodeMap.set(pathNode.id, {
+          ...(existingNode ?? {}),
+          ...pathNode,
+          children: cloneTreeNodes(
+            Array.isArray(pathNode.children) ? pathNode.children : existingNode?.children
+          ),
+        });
       }
     }
 
@@ -551,7 +592,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       const node = nodeMap.get(pathNode.id);
       if (!node) continue;
 
-      if (node.children === undefined) {
+      if (node.children === undefined && pathNode.has_children) {
         node.children = [];
       }
 
@@ -1355,6 +1396,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
   const handleCreateNewChild = async (parentId: string) => {
     try {
+      const parentNode = findNodeById(treeDataRef.current, String(parentId));
       const newItem = await createMemoryNodeWithSharedOrdering({
         parentId: (parentId || null) as any,
         name: 'New Child Item',
@@ -1362,6 +1404,21 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
 
       setExpandedItemId(parentId);
       setNewItemId(newItem.id);
+      if (parentNode?.item_type === 'item') {
+        setTreeData((prev) =>
+          finalizeTreeData(
+            updateNodeById(prev, String(parentId), (node) => ({
+              ...node,
+              item_type: 'folder',
+            }))
+          )
+        );
+        setSelectedItem((prev) =>
+          prev && String(prev.id) === String(parentId)
+            ? { ...prev, item_type: 'folder' }
+            : prev
+        );
+      }
       await refreshParentChildren(parentId);
       return;
 
