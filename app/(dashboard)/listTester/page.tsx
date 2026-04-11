@@ -8,6 +8,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -52,7 +54,30 @@ type TestSummary = {
   incorrectCount: number;
 };
 
+function TabPanel({
+  children,
+  value,
+  index,
+}: {
+  children: React.ReactNode;
+  value: number;
+  index: number;
+}) {
+  return (
+    <Box
+      role="tabpanel"
+      hidden={value !== index}
+      id={`list-tester-tabpanel-${index}`}
+      aria-labelledby={`list-tester-tab-${index}`}
+      sx={{ display: value === index ? 'block' : 'none' }}
+    >
+      {children}
+    </Box>
+  );
+}
+
 export default function ListTesterPage() {
+  const [activeTab, setActiveTab] = React.useState(0);
   const [searchText, setSearchText] = React.useState('');
   const [isSearching, setIsSearching] = React.useState(false);
   const [searchError, setSearchError] = React.useState('');
@@ -231,6 +256,7 @@ export default function ListTesterPage() {
         setActiveTestSourceLabel(sourceLabel);
         setActiveTestSourceType(sourceType);
         resetSessionTracking(listId, sortedItems.length);
+        setActiveTab(2);
       } catch (error) {
         setSearchError('Could not load memory test items.');
         setMemoryTestItems([]);
@@ -321,6 +347,7 @@ export default function ListTesterPage() {
       const directChildren = (descendants ?? []).filter((row: RootMemoryItem) => row.parent_id === item.id);
       setSelectedChildCount(directChildren.length);
       await loadSubLists(item.id);
+      setActiveTab(1);
     } catch (error) {
       setSearchError('Could not load child count.');
       setSelectedChildCount(null);
@@ -485,253 +512,278 @@ export default function ListTesterPage() {
       <Paper sx={{ p: 3, maxWidth: 900 }}>
         <Stack spacing={2}>
           <Typography variant="h5">List Tester</Typography>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <TextField
-              label="Search Lists"
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  handleSearch();
-                }
-              }}
-              fullWidth
-            />
-            <Button variant="contained" onClick={handleSearch} disabled={isSearching}>
-              Search
-            </Button>
-          </Stack>
-
-          {isSearching ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} />
-              <Typography variant="body2">Searching...</Typography>
-            </Box>
-          ) : null}
+          <Tabs
+            value={activeTab}
+            onChange={(_event, nextValue) => setActiveTab(nextValue)}
+            variant="fullWidth"
+          >
+            <Tab id="list-tester-tab-0" aria-controls="list-tester-tabpanel-0" label="Select List" />
+            <Tab id="list-tester-tab-1" aria-controls="list-tester-tabpanel-1" label="Section" disabled={!selectedName} />
+            <Tab id="list-tester-tab-2" aria-controls="list-tester-tabpanel-2" label="Memory Test" disabled={!selectedName} />
+          </Tabs>
 
           {searchError ? <Alert severity="error">{searchError}</Alert> : null}
 
-          <Stack spacing={1}>
-            {results.map((item) => (
-              <Button
-                key={item.id}
-                variant="outlined"
-                onClick={() => handleSelectResult(item)}
-                sx={{ justifyContent: 'flex-start' }}
-              >
-                {item.name ?? 'Unnamed'}
-              </Button>
-            ))}
-
-            {!isSearching && results.length === 0 && searchText.trim() ? (
-              <Typography variant="body2" color="text.secondary">
-                No root lists found.
-              </Typography>
-            ) : null}
-          </Stack>
-
-          {selectedName ? (
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle1">Selected List: {selectedName}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                {isLoadingCount
-                  ? 'Loading child count...'
-                  : `Children items count: ${selectedChildCount ?? 0}`}
-              </Typography>
-
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }}>
+          <TabPanel value={activeTab} index={0}>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <TextField
-                  label="Start From Memory Key"
-                  value={startMemoryKey}
-                  onChange={(event) => {
-                    setStartMemoryKey(event.target.value);
-                    setMemoryKeyError('');
-                  }}
+                  label="Search Lists"
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
-                      handleStartFromMemoryKey();
+                      handleSearch();
                     }
                   }}
-                  error={Boolean(memoryKeyError)}
-                  helperText={memoryKeyError || 'Load the main list and begin at a specific memory key.'}
                   fullWidth
                 />
-                <Button variant="contained" onClick={handleStartFromMemoryKey}>
-                  Start Test
+                <Button variant="contained" onClick={handleSearch} disabled={isSearching}>
+                  Search
                 </Button>
               </Stack>
-            </Paper>
-          ) : null}
 
-          {selectedName ? (
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle1">Sub Lists</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Child rows from the selected list that also contain children.
-              </Typography>
-
-              {isLoadingSubLists ? (
+              {isSearching ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <CircularProgress size={20} />
-                  <Typography variant="body2">Loading sub lists...</Typography>
+                  <Typography variant="body2">Searching...</Typography>
                 </Box>
               ) : null}
 
-              {!isLoadingSubLists && subLists.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No sub lists found for this list.
-                </Typography>
-              ) : null}
-
               <Stack spacing={1}>
-                {subLists.map((item) => (
+                {results.map((item) => (
                   <Button
                     key={item.id}
                     variant="outlined"
-                    onClick={() => handleSelectSubList(item)}
+                    onClick={() => handleSelectResult(item)}
                     sx={{ justifyContent: 'flex-start' }}
                   >
                     {item.name ?? 'Unnamed'}
                   </Button>
                 ))}
-              </Stack>
 
-              {selectedSubListName ? (
-                <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
-                  <Typography variant="subtitle2">Selected Sub List: {selectedSubListName}</Typography>
+                {!isSearching && results.length === 0 && searchText.trim() ? (
                   <Typography variant="body2" color="text.secondary">
-                    {isLoadingSubListCount
-                      ? 'Loading child count...'
-                      : `Children items count: ${selectedSubListChildCount ?? 0}`}
+                    No root lists found.
                   </Typography>
+                ) : null}
+              </Stack>
+            </Stack>
+          </TabPanel>
+
+          <TabPanel value={activeTab} index={1}>
+            {selectedName ? (
+              <Stack spacing={2}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle1">Selected List: {selectedName}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {isLoadingCount
+                      ? 'Loading child count...'
+                      : `Children items count: ${selectedChildCount ?? 0}`}
+                  </Typography>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }}>
+                    <TextField
+                      label="Start From Memory Key"
+                      value={startMemoryKey}
+                      onChange={(event) => {
+                        setStartMemoryKey(event.target.value);
+                        setMemoryKeyError('');
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          handleStartFromMemoryKey();
+                        }
+                      }}
+                      error={Boolean(memoryKeyError)}
+                      helperText={memoryKeyError || 'Load the main list and begin at a specific memory key.'}
+                      fullWidth
+                    />
+                    <Button variant="contained" onClick={handleStartFromMemoryKey}>
+                      Start Test
+                    </Button>
+                  </Stack>
                 </Paper>
-              ) : null}
-            </Paper>
-          ) : null}
 
-          {selectedName && activeTestSourceType ? (
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="h6">Memory Test Form</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {activeTestSourceType === 'sublist'
-                  ? `Path: ${selectedName} / ${activeTestSourceLabel}`
-                  : `Path: ${activeTestSourceLabel}`}
-              </Typography>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle1">Sub Lists</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Child rows from the selected list that also contain children.
+                  </Typography>
 
-              {activeSessionId ? (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Active session #{activeSessionId}
-                </Typography>
-              ) : null}
+                  {isLoadingSubLists ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CircularProgress size={20} />
+                      <Typography variant="body2">Loading sub lists...</Typography>
+                    </Box>
+                  ) : null}
 
-              {testSaveError ? <Alert severity="error" sx={{ mb: 2 }}>{testSaveError}</Alert> : null}
-
-              {testSummary ? (
-                <Alert severity="success" sx={{ mb: 2 }}>
-                  Session complete. Correct: {testSummary.correctCount} | Incorrect: {testSummary.incorrectCount} |
-                  Total: {testSummary.totalItems}
-                </Alert>
-              ) : null}
-
-              {isLoadingMemoryTestItem ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CircularProgress size={20} />
-                  <Typography variant="body2">Loading first item...</Typography>
-                </Box>
-              ) : null}
-
-              {!isLoadingMemoryTestItem && !memoryTestItem && !hasCompletedTest ? (
-                <Typography variant="body2" color="text.secondary">
-                  {activeTestSourceType === 'sublist'
-                    ? 'No child items were found in this sub list.'
-                    : 'No child items were found in this list.'}
-                </Typography>
-              ) : null}
-
-              {!isLoadingMemoryTestItem && hasCompletedTest ? (
-                <Typography variant="body2" color="text.secondary">
-                  All items in this test session have been recorded.
-                </Typography>
-              ) : null}
-
-              {!isLoadingMemoryTestItem && memoryTestItem ? (
-                <Stack spacing={1.5}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <IconButton
-                      aria-label="Previous memory item"
-                      onClick={handlePreviousMemoryItem}
-                      disabled={currentTestIndex <= 0 || isSavingAnswer}
-                    >
-                      <ArrowBackIcon />
-                    </IconButton>
-                    <IconButton
-                      aria-label="Next memory item"
-                      onClick={handleNextMemoryItem}
-                      disabled={currentTestIndex >= memoryTestItems.length - 1 || isSavingAnswer}
-                    >
-                      <ArrowForwardIcon />
-                    </IconButton>
+                  {!isLoadingSubLists && subLists.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
-                      {currentTestIndex + 1} / {memoryTestItems.length}
+                      No sub lists found for this list.
                     </Typography>
+                  ) : null}
+
+                  <Stack spacing={1}>
+                    {subLists.map((item) => (
+                      <Button
+                        key={item.id}
+                        variant="outlined"
+                        onClick={() => handleSelectSubList(item)}
+                        sx={{ justifyContent: 'flex-start' }}
+                      >
+                        {item.name ?? 'Unnamed'}
+                      </Button>
+                    ))}
                   </Stack>
 
-                  <TextField
-                    label="Memory Key"
-                    value={String(memoryTestItem.memory_key ?? '')}
-                    InputProps={{ readOnly: true }}
-                    fullWidth
-                  />
-
-                  <Button
-                    variant="outlined"
-                    onClick={() => setShowMemoryName((previous) => !previous)}
-                    sx={{ alignSelf: 'flex-start' }}
-                    disabled={isSavingAnswer}
-                  >
-                    {showMemoryName ? 'Hide Name' : 'Show Name'}
-                  </Button>
-
-                  {showMemoryName ? (
-                    <Stack spacing={1.5}>
-                      <TextField
-                        label="Name"
-                        value={memoryTestItem.name ?? 'Unnamed'}
-                        InputProps={{ readOnly: true }}
-                        fullWidth
-                      />
-                      {currentItemAlreadyRecorded ? (
-                        <Alert severity="info">
-                          This item has already been recorded for the current session.
-                        </Alert>
-                      ) : null}
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                        <Button
-                          variant="contained"
-                          color="success"
-                          startIcon={isSavingAnswer ? <CircularProgress size={16} color="inherit" /> : <CheckIcon />}
-                          onClick={() => handleRecordAnswer(true)}
-                          disabled={isSavingAnswer || currentItemAlreadyRecorded}
-                        >
-                          Tick
-                        </Button>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          startIcon={isSavingAnswer ? <CircularProgress size={16} color="inherit" /> : <CloseIcon />}
-                          onClick={() => handleRecordAnswer(false)}
-                          disabled={isSavingAnswer || currentItemAlreadyRecorded}
-                        >
-                          X
-                        </Button>
-                      </Stack>
-                    </Stack>
+                  {selectedSubListName ? (
+                    <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
+                      <Typography variant="subtitle2">Selected Sub List: {selectedSubListName}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {isLoadingSubListCount
+                          ? 'Loading child count...'
+                          : `Children items count: ${selectedSubListChildCount ?? 0}`}
+                      </Typography>
+                    </Paper>
                   ) : null}
-                </Stack>
-              ) : null}
-            </Paper>
-          ) : null}
+                </Paper>
+              </Stack>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Select a list first.
+              </Typography>
+            )}
+          </TabPanel>
+
+          <TabPanel value={activeTab} index={2}>
+            {selectedName && activeTestSourceType ? (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="h6">Memory Test Form</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {activeTestSourceType === 'sublist'
+                    ? `Path: ${selectedName} / ${activeTestSourceLabel}`
+                    : `Path: ${activeTestSourceLabel}`}
+                </Typography>
+
+                {activeSessionId ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Active session #{activeSessionId}
+                  </Typography>
+                ) : null}
+
+                {testSaveError ? <Alert severity="error" sx={{ mb: 2 }}>{testSaveError}</Alert> : null}
+
+                {testSummary ? (
+                  <Alert severity="success" sx={{ mb: 2 }}>
+                    Session complete. Correct: {testSummary.correctCount} | Incorrect: {testSummary.incorrectCount} |
+                    Total: {testSummary.totalItems}
+                  </Alert>
+                ) : null}
+
+                {isLoadingMemoryTestItem ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={20} />
+                    <Typography variant="body2">Loading first item...</Typography>
+                  </Box>
+                ) : null}
+
+                {!isLoadingMemoryTestItem && !memoryTestItem && !hasCompletedTest ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {activeTestSourceType === 'sublist'
+                      ? 'No child items were found in this sub list.'
+                      : 'No child items were found in this list.'}
+                  </Typography>
+                ) : null}
+
+                {!isLoadingMemoryTestItem && hasCompletedTest ? (
+                  <Typography variant="body2" color="text.secondary">
+                    All items in this test session have been recorded.
+                  </Typography>
+                ) : null}
+
+                {!isLoadingMemoryTestItem && memoryTestItem ? (
+                  <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <IconButton
+                        aria-label="Previous memory item"
+                        onClick={handlePreviousMemoryItem}
+                        disabled={currentTestIndex <= 0 || isSavingAnswer}
+                      >
+                        <ArrowBackIcon />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Next memory item"
+                        onClick={handleNextMemoryItem}
+                        disabled={currentTestIndex >= memoryTestItems.length - 1 || isSavingAnswer}
+                      >
+                        <ArrowForwardIcon />
+                      </IconButton>
+                      <Typography variant="body2" color="text.secondary">
+                        {currentTestIndex + 1} / {memoryTestItems.length}
+                      </Typography>
+                    </Stack>
+
+                    <TextField
+                      label="Memory Key"
+                      value={String(memoryTestItem.memory_key ?? '')}
+                      InputProps={{ readOnly: true }}
+                      fullWidth
+                    />
+
+                    <Button
+                      variant="outlined"
+                      onClick={() => setShowMemoryName((previous) => !previous)}
+                      sx={{ alignSelf: 'flex-start' }}
+                      disabled={isSavingAnswer}
+                    >
+                      {showMemoryName ? 'Hide Name' : 'Show Name'}
+                    </Button>
+
+                    {showMemoryName ? (
+                      <Stack spacing={1.5}>
+                        <TextField
+                          label="Name"
+                          value={memoryTestItem.name ?? 'Unnamed'}
+                          InputProps={{ readOnly: true }}
+                          fullWidth
+                        />
+                        {currentItemAlreadyRecorded ? (
+                          <Alert severity="info">
+                            This item has already been recorded for the current session.
+                          </Alert>
+                        ) : null}
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                          <Button
+                            variant="contained"
+                            color="success"
+                            startIcon={isSavingAnswer ? <CircularProgress size={16} color="inherit" /> : <CheckIcon />}
+                            onClick={() => handleRecordAnswer(true)}
+                            disabled={isSavingAnswer || currentItemAlreadyRecorded}
+                          >
+                            Tick
+                          </Button>
+                          <Button
+                            variant="contained"
+                            color="error"
+                            startIcon={isSavingAnswer ? <CircularProgress size={16} color="inherit" /> : <CloseIcon />}
+                            onClick={() => handleRecordAnswer(false)}
+                            disabled={isSavingAnswer || currentItemAlreadyRecorded}
+                          >
+                            X
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    ) : null}
+                  </Stack>
+                ) : null}
+              </Paper>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Choose a list section to start the test.
+              </Typography>
+            )}
+          </TabPanel>
         </Stack>
       </Paper>
     </Box>

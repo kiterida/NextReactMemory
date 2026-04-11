@@ -610,9 +610,32 @@ export async function getListDescendants(listId) {
     return [];
   }
 
-  const { data, error } = await supabase.rpc('get_memory_list_descendants', {
-    p_list_id: Number(listId),
-  });
+  const { data, error } = await supabase
+    .from('memory_tree_with_starred')
+    .select(`
+      id,
+      parent_id,
+      list_id,
+      item_type,
+      is_testable,
+      memory_key,
+      row_order,
+      name,
+      memory_image,
+      header_image,
+      description,
+      rich_text,
+      code_snippet,
+      starred,
+      memory_list_key,
+      child_count,
+      has_children
+    `)
+    .eq('list_id', Number(listId))
+    .neq('id', Number(listId))
+    .order('row_order', { ascending: true, nullsFirst: false })
+    .order('memory_key', { ascending: true, nullsFirst: false })
+    .order('id', { ascending: true });
 
   if (error) {
     console.error('Error fetching list descendants:', error);
