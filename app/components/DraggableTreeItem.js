@@ -50,6 +50,10 @@ const DraggableTreeItem = ({
   onSelectItem,
   onCreateNewChild,
   onLinkExistingItemHere,
+  onCopyLink,
+  onPasteLink,
+  hasCopiedLink,
+  copiedLinkName,
   onConfirmDialogBox,
   onDeleteItem,
   onShowMessage,
@@ -484,6 +488,19 @@ const DraggableTreeItem = ({
         {onLinkExistingItemHere ? (
           <MenuItem disabled={!canAcceptNestedChildren} onClick={() => { handleClose(); onLinkExistingItemHere(item.id); }}>
             Link existing item here
+          </MenuItem>
+        ) : null}
+        {onCopyLink ? (
+          <MenuItem onClick={() => { handleClose(); onCopyLink(item.id); }}>
+            Copy Link
+          </MenuItem>
+        ) : null}
+        {onPasteLink ? (
+          <MenuItem
+            disabled={!canAcceptNestedChildren || !hasCopiedLink}
+            onClick={() => { handleClose(); onPasteLink(item.id); }}
+          >
+            {copiedLinkName ? `Paste Link (${copiedLinkName})` : 'Paste Link'}
           </MenuItem>
         ) : null}
         <MenuItem onClick={() => { handleClose(); updateStarred(item.source_item_id ?? item.id, !item.starred); }}>

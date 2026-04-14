@@ -18,7 +18,7 @@ import {
   sortMemoryNodesForDisplay,
 } from './memoryData';
 import LinkExistingMemoryItemDialog from './LinkExistingMemoryItemDialog';
-import { countDirectDescendants, createMemoryNodeWithSharedOrdering, deleteDirectMemoryItemTree, deleteMemoryItemLink, getNextMemoryKeyForParent, saveMemoryAppearance } from './memoryLinkData';
+import { countDirectDescendants, createMemoryNodeWithSharedOrdering, deleteDirectMemoryItemTree, deleteMemoryItemLink, getNextMemoryKeyForParent, insertMemoryItemLink, saveMemoryAppearance } from './memoryLinkData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -46,6 +46,8 @@ interface MemoriesViewProps {
   focusId?: string | null; // or just `string` depending on your logic
   singleListView?: string | null;
 }
+
+const MEMORY_LINK_CLIPBOARD_KEY = 'memory-app-copied-link';
 
 type MemoryItem = {
   id: string;
@@ -122,6 +124,32 @@ export interface MemoryTreeItem {
   // ... add any other fields your items have (like `title`, `starred`, etc.)
   children?: MemoryTreeItem[];
 }
+
+type CopiedLinkItem = {
+  sourceItemId: string;
+  name: string;
+};
+
+const parseCopiedLinkItem = (rawValue: string | null): CopiedLinkItem | null => {
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsedValue = JSON.parse(rawValue);
+    if (!parsedValue?.sourceItemId) {
+      return null;
+    }
+
+    return {
+      sourceItemId: String(parsedValue.sourceItemId),
+      name: String(parsedValue.name ?? `Item ${parsedValue.sourceItemId}`),
+    };
+  } catch (error) {
+    console.error('Failed to parse copied link item:', error);
+    return null;
+  }
+};
 
 const getTreeNodeId = (raw: any) => {
   if (raw?.is_linked && raw?.link_id !== null && raw?.link_id !== undefined) {
@@ -328,6 +356,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkTargetItem, setLinkTargetItem] = useState<MemoryItem | null>(null);
   const [defaultLinkMemoryKey, setDefaultLinkMemoryKey] = useState<number | null>(null);
+  const [copiedLinkItem, setCopiedLinkItem] = useState<CopiedLinkItem | null>(null);
   const [reorderDropIndicator, setReorderDropIndicator] = useState<{
     draggedItemId: string;
     targetItemId: string;
@@ -347,6 +376,28 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
   useEffect(() => {
     treeDataRef.current = treeData;
   }, [treeData]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    setCopiedLinkItem(parseCopiedLinkItem(window.localStorage.getItem(MEMORY_LINK_CLIPBOARD_KEY)));
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== MEMORY_LINK_CLIPBOARD_KEY) {
+        return;
+      }
+
+      setCopiedLinkItem(parseCopiedLinkItem(event.newValue));
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
 
   
@@ -1379,6 +1430,65 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     setLinkDialogOpen(true);
   };
 
+  const handleCopyLink = async (targetId: string) => {
+    const sourceItem = findNodeById(treeDataRef.current, String(targetId));
+    if (!sourceItem) {
+      showMessage("Could not resolve the source item.", "error");
+      return;
+    }
+
+    const nextCopiedLinkItem: CopiedLinkItem = {
+      sourceItemId: String(sourceItem.source_item_id ?? sourceItem.id),
+      name: sourceItem.name?.trim() || `Item ${sourceItem.source_item_id ?? sourceItem.id}`,
+    };
+
+    setCopiedLinkItem(nextCopiedLinkItem);
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(MEMORY_LINK_CLIPBOARD_KEY, JSON.stringify(nextCopiedLinkItem));
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(`memory-link:${nextCopiedLinkItem.sourceItemId}`);
+      } catch (error) {
+        console.error('Failed to write copied link to clipboard:', error);
+      }
+    }
+
+    showMessage(`Copied link for "${nextCopiedLinkItem.name}".`, "success");
+  };
+
+  const handlePasteLink = async (targetId: string) => {
+    if (!copiedLinkItem?.sourceItemId) {
+      showMessage("Copy a link first.", "warning");
+      return;
+    }
+
+    const targetItem = findNodeById(treeDataRef.current, String(targetId));
+    if (!targetItem) {
+      showMessage("Could not resolve the destination item.", "error");
+      return;
+    }
+
+    if (targetItem.is_linked) {
+      showMessage("Pasting into a linked appearance is not supported in this incremental version.", "warning");
+      return;
+    }
+
+    try {
+      const destinationParentId = String(targetItem.source_item_id ?? targetItem.id);
+      const nextMemoryKey = await getNextMemoryKeyForParent(destinationParentId);
+      await insertMemoryItemLink(destinationParentId, copiedLinkItem.sourceItemId, nextMemoryKey);
+      await refreshParentChildren(targetItem.id);
+      showMessage(`Linked "${copiedLinkItem.name}" here.`, "success");
+    } catch (error) {
+      console.error("Error pasting copied link:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      showMessage(`Failed to paste link: ${message}`, "error");
+    }
+  };
+
   const handleCloseLinkDialog = () => {
     setLinkDialogOpen(false);
     setLinkTargetItem(null);
@@ -1531,6 +1641,10 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           onSelectItem={handleClick}
           onCreateNewChild={handleCreateNewChild}
           onLinkExistingItemHere={handleOpenLinkDialog}
+          onCopyLink={handleCopyLink}
+          onPasteLink={handlePasteLink}
+          hasCopiedLink={Boolean(copiedLinkItem?.sourceItemId)}
+          copiedLinkName={copiedLinkItem?.name ?? null}
           onConfirmDialogBox={handleConfirmDialogBox}
           onDeleteItem={handleDelete}
           onShowMessage={showMessage}
