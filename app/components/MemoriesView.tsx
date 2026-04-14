@@ -39,6 +39,7 @@ import {
   DialogContentText, DialogActions
 } from '@mui/material';
 import { Add as AddIcon, Link as LinkIcon, Lock as LockIcon, LockOpen as LockOpenIcon } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
 import { Insert100Items } from '../function_lib/treeDataFunctions';
 
 interface MemoriesViewProps {
@@ -1627,7 +1628,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     }
   };
 
-  const mapTreeData = (data: MemoryTreeItem[], isRoot = true) => {
+  const mapTreeData = (data: MemoryTreeItem[], isRoot = true, depth = 0) => {
 
   
     const result = ((isRoot && filterStarred) ? data.filter((item) => item.starred !== false) : data) // Apply filter only at root level  
@@ -1636,6 +1637,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         <DraggableTreeItem
           key={item.id}
           item={item}
+          depth={depth}
           //itemId={item.id}
           onDropUpdate={handleDropUpdate}
           onSelectItem={handleClick}
@@ -1658,7 +1660,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           onClearReorderHover={handleClearReorderHover}
           reorderDropIndicator={reorderDropIndicator}
         >
-          {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
+          {item.children && item.children.length > 0 ? mapTreeData(item.children, false, depth + 1) : null}
           {expandedItems.includes(String(item.id)) ? (
             <TreeItem
               key={`${item.id}__inline-add-child`}
@@ -1666,14 +1668,16 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
               label={
                 <Box
                   onClick={(event) => event.stopPropagation()}
-                  sx={{
+                  sx={(theme) => ({
                     display: 'flex',
                     alignItems: 'center',
                     minHeight: '40px',
                     width: '100%',
                     pl: 1,
                     pr: 1,
-                  }}
+                    borderRadius: 1,
+                    backgroundColor: alpha(theme.palette.primary.main, Math.min(depth + 1, 4) * 0.035),
+                  })}
                 >
                   <Box
                     sx={{

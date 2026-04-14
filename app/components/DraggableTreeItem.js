@@ -30,6 +30,7 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
 
 export const TREE_ITEM_NEST_DND_TYPE = 'TREE_ITEM_NEST';
 export const TREE_ITEM_REORDER_DND_TYPE = 'TREE_ITEM_REORDER';
@@ -66,6 +67,7 @@ const DraggableTreeItem = ({
   onReorderDrop,
   onClearReorderHover,
   reorderDropIndicator,
+  depth = 0,
 }) => {
   const [contextMenu, setContextMenu] = useState(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -279,6 +281,7 @@ const DraggableTreeItem = ({
 
   const showNestDropState = isOver && canDrop && currentDragType === TREE_ITEM_NEST_DND_TYPE;
   const treeOpacity = isNestDragging || isReorderDragging ? 0.45 : 1;
+  const backgroundTintStrength = Math.min(depth, 4) * 0.035;
 
   return (
     <>
@@ -310,11 +313,15 @@ const DraggableTreeItem = ({
               paddingRight: '104px',
               paddingLeft: '8px',
               borderRadius: 1,
-              backgroundColor: showNestDropState ? theme.palette.action.hover : 'transparent',
-              outline: showNestDropState ? `1px solid ${theme.palette.primary.main}` : 'none',
-              transition: 'background-color 120ms ease, outline-color 120ms ease',
-              opacity: treeOpacity,
-            })}
+               backgroundColor: showNestDropState
+                 ? theme.palette.action.hover
+                 : backgroundTintStrength > 0
+                   ? alpha(theme.palette.primary.main, backgroundTintStrength)
+                   : 'transparent',
+               outline: showNestDropState ? `1px solid ${theme.palette.primary.main}` : 'none',
+               transition: 'background-color 120ms ease, outline-color 120ms ease',
+               opacity: treeOpacity,
+             })}
           >
             {showDropBefore ? (
               <Box
