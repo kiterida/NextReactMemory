@@ -378,6 +378,49 @@ export async function updateMemoryItemLinkMemoryKey(linkId, memoryKey) {
   return data;
 }
 
+export async function moveMemoryItemLink(linkId, newParentItemId) {
+  const normalizedLinkId = toRequiredInteger(linkId, 'Link id');
+  const normalizedParentId = toRequiredInteger(newParentItemId, 'Parent item id');
+
+  const { data: existingLink, error: loadError } = await supabase
+    .from('memory_item_links')
+    .select('id, parent_item_id, child_item_id')
+    .eq('id', normalizedLinkId)
+    .single();
+
+  if (loadError) {
+    console.error('Error loading memory item link for move:', loadError);
+    throw loadError;
+  }
+
+  if (Number(existingLink.child_item_id) === normalizedParentId) {
+    throw new Error('A memory item cannot be linked into itself.');
+  }
+
+  const nextMemoryKey = await getNextMemoryKeyForParent(normalizedParentId);
+  await assertMemoryKeyAvailableInParent(normalizedParentId, nextMemoryKey, {
+    excludeLinkId: normalizedLinkId,
+  });
+
+  const { data, error } = await supabase
+    .from('memory_item_links')
+    .update({
+      parent_item_id: normalizedParentId,
+      memory_key: nextMemoryKey,
+    })
+    .eq('id', normalizedLinkId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error moving memory item link:', error);
+    throw error;
+  }
+
+  await refreshMemoryItemMetadata();
+  return data;
+}
+
 export async function deleteMemoryItemLink(linkId) {
   const normalizedLinkId = toRequiredInteger(linkId, 'Link id');
   const { error } = await supabase

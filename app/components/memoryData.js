@@ -966,12 +966,99 @@ export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
     });
 
     if (error) {
-      throw new Error(
-        formatSupabaseError(
-          error,
-          'Failed to move memory items. Make sure the structure-move migration has been applied.'
-        )
+      const formattedMessage = formatSupabaseError(
+        error,
+        'Failed to move memory items. Make sure the structure-move migration has been applied.'
       );
+
+      const shouldRetryWithFreshKeys =
+        formattedMessage.includes('memory_key') &&
+        formattedMessage.includes('already used in destination parent');
+
+      if (shouldRetryWithFreshKeys) {
+        const destinationQuery = normalizedParentId === null
+          ? supabase
+              .from('memory_items')
+              .select('id, memory_key')
+              .is('parent_id', null)
+          : supabase
+              .from('memory_items')
+              .select('id, memory_key')
+              .eq('parent_id', normalizedParentId);
+
+        const destinationLinkQuery = normalizedParentId === null
+          ? Promise.resolve({ data: [], error: null })
+          : supabase
+              .from('memory_item_links')
+              .select('id, memory_key')
+              .eq('parent_item_id', normalizedParentId);
+
+        const [
+          { data: destinationRows, error: destinationError },
+          { data: destinationLinkRows, error: destinationLinkError },
+          { data: movingRows, error: movingError },
+        ] = await Promise.all([
+          destinationQuery,
+          destinationLinkQuery,
+          supabase
+            .from('memory_items')
+            .select('id, memory_key, row_order')
+            .in('id', normalizedIds),
+        ]);
+
+        if (destinationError) {
+          throw new Error(formatSupabaseError(destinationError, 'Failed to inspect destination keys.'));
+        }
+
+        if (movingError) {
+          throw new Error(formatSupabaseError(movingError, 'Failed to inspect moving items.'));
+        }
+
+        if (destinationLinkError) {
+          throw new Error(formatSupabaseError(destinationLinkError, 'Failed to inspect destination link keys.'));
+        }
+
+        const movingIdSet = new Set(normalizedIds);
+        const highestDestinationKey = [
+          ...(destinationRows ?? []).filter((row) => !movingIdSet.has(Number(row.id))),
+          ...(destinationLinkRows ?? []),
+        ].reduce((maxValue, row) => {
+          const numericKey = Number(row.memory_key);
+          return Number.isFinite(numericKey) ? Math.max(maxValue, numericKey) : maxValue;
+        }, -1);
+
+        const orderedMovingRows = [...(movingRows ?? [])].sort((a, b) => {
+          const sortValueA = Number.isFinite(Number(a.memory_key)) ? Number(a.memory_key) : Number(a.row_order);
+          const sortValueB = Number.isFinite(Number(b.memory_key)) ? Number(b.memory_key) : Number(b.row_order);
+
+          if (sortValueA !== sortValueB) {
+            return sortValueA - sortValueB;
+          }
+
+          return Number(a.id) - Number(b.id);
+        });
+
+        for (const [index, row] of orderedMovingRows.entries()) {
+          const nextKey = highestDestinationKey + index + 1;
+          const { error: updateError } = await supabase
+            .from('memory_items')
+            .update({
+              parent_id: normalizedParentId,
+              memory_key: nextKey,
+              row_order: nextKey,
+            })
+            .eq('id', Number(row.id));
+
+          if (updateError) {
+            throw new Error(formatSupabaseError(updateError, 'Failed to retry move with a new memory key.'));
+          }
+        }
+
+        await refreshMemoryItemMetadata();
+        return;
+      }
+
+      throw new Error(formattedMessage);
     }
   } catch (err) {
     console.error("Error updating memory item(s):", err);
@@ -979,33 +1066,195 @@ export const updateMemoryItemParent = async (draggedItemIds, newParentId) => {
   }
 };
 
+/**
+ * @param {{
+ *   movedItemId: string | number | null | undefined,
+ *   targetItemId: string | number | null | undefined,
+ *   movedIsLinked?: boolean,
+ *   targetIsLinked?: boolean,
+ *   parentId?: string | number | null,
+ *   insertPosition?: 'before' | 'after'
+ * }} params
+ */
 export const reorderMemoryItemsWithinParent = async ({
   movedItemId,
   targetItemId,
+  movedIsLinked = false,
+  targetIsLinked = false,
+  parentId = null,
   insertPosition = 'before',
 }) => {
   const normalizedMovedItemId = Number(movedItemId);
   const normalizedTargetItemId = Number(targetItemId);
+  const normalizedParentId = toNullableNumber(parentId);
   const normalizedInsertPosition = insertPosition === 'after' ? 'after' : 'before';
 
   if (!Number.isFinite(normalizedMovedItemId) || !Number.isFinite(normalizedTargetItemId)) {
     throw new Error('Invalid reorder item id.');
   }
 
-  const { error } = await supabase.rpc('reorder_memory_items_within_parent', {
-    p_moved_item_id: normalizedMovedItemId,
-    p_target_item_id: normalizedTargetItemId,
-    p_insert_position: normalizedInsertPosition,
-  });
+  const runMixedReorderFallback = async () => {
+    const directQuery = normalizedParentId === null
+      ? supabase
+          .from('memory_items')
+          .select('id, memory_key, row_order')
+          .is('parent_id', null)
+      : supabase
+          .from('memory_items')
+          .select('id, memory_key, row_order')
+          .eq('parent_id', normalizedParentId);
 
-  if (error) {
-    const message = formatSupabaseError(
-      error,
-      'Failed to reorder memory items. Make sure the reorder RPC migration has been applied.'
-    );
-    console.error('Error reordering memory items:', message, error);
-    throw new Error(message);
+    const linkQuery = normalizedParentId === null
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from('memory_item_links')
+          .select('id, memory_key')
+          .eq('parent_item_id', normalizedParentId);
+
+    const [{ data: directRows, error: directError }, { data: linkRows, error: linkError }] = await Promise.all([
+      directQuery,
+      linkQuery,
+    ]);
+
+    if (directError) {
+      throw new Error(formatSupabaseError(directError, 'Failed to load sibling items for reorder.'));
+    }
+
+    if (linkError) {
+      throw new Error(formatSupabaseError(linkError, 'Failed to load sibling links for reorder.'));
+    }
+
+    const allEntries = [
+      ...(directRows ?? []).map((row) => ({
+        kind: 'item',
+        id: Number(row.id),
+        sortKey: Number.isFinite(Number(row.memory_key)) ? Number(row.memory_key) : Number(row.row_order),
+      })),
+      ...(linkRows ?? []).map((row) => ({
+        kind: 'link',
+        id: Number(row.id),
+        sortKey: Number(row.memory_key),
+      })),
+    ].sort((a, b) => {
+      if (a.sortKey !== b.sortKey) {
+        return a.sortKey - b.sortKey;
+      }
+
+      if (a.kind !== b.kind) {
+        return a.kind.localeCompare(b.kind);
+      }
+
+      return a.id - b.id;
+    });
+
+    const movedKind = movedIsLinked ? 'link' : 'item';
+    const targetKind = targetIsLinked ? 'link' : 'item';
+    const movedIndex = allEntries.findIndex((entry) => entry.kind === movedKind && entry.id === normalizedMovedItemId);
+    const targetIndex = allEntries.findIndex((entry) => entry.kind === targetKind && entry.id === normalizedTargetItemId);
+
+    if (movedIndex === -1 || targetIndex === -1) {
+      throw new Error('Unable to locate reorder entries in the current parent.');
+    }
+
+    const [movedEntry] = allEntries.splice(movedIndex, 1);
+    const adjustedTargetIndex = allEntries.findIndex((entry) => entry.kind === targetKind && entry.id === normalizedTargetItemId);
+    const insertIndex = normalizedInsertPosition === 'after' ? adjustedTargetIndex + 1 : adjustedTargetIndex;
+    allEntries.splice(insertIndex, 0, movedEntry);
+
+    const highestExistingKey = allEntries.reduce((maxValue, entry) => {
+      return Number.isFinite(entry.sortKey) ? Math.max(maxValue, entry.sortKey) : maxValue;
+    }, -1);
+    const tempBaseKey = highestExistingKey + 1000000;
+
+    const numberedEntries = allEntries.map((entry, index) => ({
+      ...entry,
+      tempKey: tempBaseKey + index,
+      finalKey: index,
+    }));
+
+    for (const entry of numberedEntries) {
+      if (entry.kind === 'item') {
+        const { error: updateError } = await supabase
+          .from('memory_items')
+          .update({
+            memory_key: entry.tempKey,
+            row_order: entry.tempKey,
+          })
+          .eq('id', entry.id);
+
+        if (updateError) {
+          throw new Error(formatSupabaseError(updateError, 'Failed to assign temporary reorder keys.'));
+        }
+      } else {
+        const { error: updateError } = await supabase
+          .from('memory_item_links')
+          .update({
+            memory_key: entry.tempKey,
+          })
+          .eq('id', entry.id);
+
+        if (updateError) {
+          throw new Error(formatSupabaseError(updateError, 'Failed to assign temporary reorder keys.'));
+        }
+      }
+    }
+
+    for (const entry of numberedEntries) {
+      if (entry.kind === 'item') {
+        const { error: updateError } = await supabase
+          .from('memory_items')
+          .update({
+            memory_key: entry.finalKey,
+            row_order: entry.finalKey,
+          })
+          .eq('id', entry.id);
+
+        if (updateError) {
+          throw new Error(formatSupabaseError(updateError, 'Failed to reorder sibling items.'));
+        }
+      } else {
+        const { error: updateError } = await supabase
+          .from('memory_item_links')
+          .update({
+            memory_key: entry.finalKey,
+          })
+          .eq('id', entry.id);
+
+        if (updateError) {
+          throw new Error(formatSupabaseError(updateError, 'Failed to reorder sibling links.'));
+        }
+      }
+    }
+
+    await refreshMemoryItemMetadata();
+  };
+
+  if (!movedIsLinked && !targetIsLinked) {
+    const { error } = await supabase.rpc('reorder_memory_items_within_parent', {
+      p_moved_item_id: normalizedMovedItemId,
+      p_target_item_id: normalizedTargetItemId,
+      p_insert_position: normalizedInsertPosition,
+    });
+
+    if (error) {
+      const message = formatSupabaseError(
+        error,
+        'Failed to reorder memory items. Make sure the reorder RPC migration has been applied.'
+      );
+      const shouldRetryWithFallback =
+        message.includes('memory_key') &&
+        message.includes('already used in destination parent');
+
+      if (!shouldRetryWithFallback) {
+        console.error('Error reordering memory items:', message, error);
+        throw new Error(message);
+      }
+
+      await runMixedReorderFallback();
+    }
+    return;
   }
+  await runMixedReorderFallback();
 };
 
 export const setMemoryListLockState = async (memoryItemId, isLocked) => {

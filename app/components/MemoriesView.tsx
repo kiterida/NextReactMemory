@@ -18,7 +18,7 @@ import {
   sortMemoryNodesForDisplay,
 } from './memoryData';
 import LinkExistingMemoryItemDialog from './LinkExistingMemoryItemDialog';
-import { countDirectDescendants, createMemoryNodeWithSharedOrdering, deleteDirectMemoryItemTree, deleteMemoryItemLink, getNextMemoryKeyForParent, insertMemoryItemLink, saveMemoryAppearance } from './memoryLinkData';
+import { countDirectDescendants, createMemoryNodeWithSharedOrdering, deleteDirectMemoryItemTree, deleteMemoryItemLink, getNextMemoryKeyForParent, insertMemoryItemLink, moveMemoryItemLink, saveMemoryAppearance } from './memoryLinkData';
 import { supabase } from './supabaseClient';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -26,7 +26,7 @@ import { useTreeViewApiRef } from '@mui/x-tree-view/hooks';
 import { DndProvider, useDrop, useDragLayer } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import DraggableTreeItem, { TREE_ITEM_NEST_DND_TYPE } from './DraggableTreeItem';
-import { Backdrop, Box, Card, CardContent, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
+import { Backdrop, Box, Card, CardContent, CircularProgress, IconButton, LinearProgress, Tooltip, Typography } from '@mui/material';
 import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
 import ItemDetailsTab from './ItemDetailsTab';
@@ -904,9 +904,32 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     }
 
     const sourceParentsToRefresh = Array.from(currentParentIds);
+    const linkedMoveNodes = treeMoveIds
+      .map((id) => findNodeById(treeData, id))
+      .filter((node): node is MemoryTreeItem => Boolean(node?.is_linked));
+    const directMoveIds = treeMoveIds.filter((id) => {
+      const node = findNodeById(treeData, id);
+      return !node?.is_linked;
+    });
+
+    if (normalizedParentId === null && linkedMoveNodes.length > 0) {
+      showMessage('Linked items must stay under a parent item.', 'warning');
+      return;
+    }
 
     try {
-      await updateMemoryItemParent(treeMoveIds, normalizedParentId);
+      if (directMoveIds.length > 0) {
+        await updateMemoryItemParent(directMoveIds, normalizedParentId);
+      }
+
+      for (const linkedNode of linkedMoveNodes) {
+        if (!linkedNode.link_id || !normalizedParentId) {
+          continue;
+        }
+
+        await moveMemoryItemLink(linkedNode.link_id, normalizedParentId);
+      }
+
       for (const parentId of Array.from(new Set([...sourceParentsToRefresh, normalizedParentId]))) {
         await refreshParentChildren(parentId);
       }
@@ -964,11 +987,6 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       return;
     }
 
-    if (draggedNode.is_linked || targetNode.is_linked) {
-      showMessage('Linked rows cannot be reordered with the drag handle.', 'warning');
-      return;
-    }
-
     if (String(draggedNode.parent_id ?? '') !== String(targetNode.parent_id ?? '')) {
       showMessage('Reordering is only allowed between siblings in the same parent.', 'warning');
       return;
@@ -980,9 +998,13 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     }
 
     try {
+      showDeleteProgress('Reordering items. Please wait...');
       await reorderMemoryItemsWithinParent({
-        movedItemId: draggedNode.source_item_id ?? draggedNode.id,
-        targetItemId: targetNode.source_item_id ?? targetNode.id,
+        movedItemId: draggedNode.is_linked ? draggedNode.link_id : (draggedNode.source_item_id ?? draggedNode.id),
+        targetItemId: targetNode.is_linked ? targetNode.link_id : (targetNode.source_item_id ?? targetNode.id),
+        movedIsLinked: Boolean(draggedNode.is_linked),
+        targetIsLinked: Boolean(targetNode.is_linked),
+        parentId: draggedNode.parent_id ?? null,
         insertPosition: placement,
       });
 
@@ -991,6 +1013,8 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       showMessage(`Failed to reorder items: ${message}`, 'error');
+    } finally {
+      hideDeleteProgress();
     }
   }
 
@@ -1833,7 +1857,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
       .map(String)
       .filter((id) => {
       const node = findNodeById(nodes, id);
-      if (!node || node.is_linked) return false;
+      if (!node) return false;
 
         let currentParentId = node.parent_id ? String(node.parent_id) : null;
         while (currentParentId) {
@@ -2207,8 +2231,24 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         open={deleteProgressOpen}
         sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.modal + 1, flexDirection: 'column', gap: 2 }}
       >
-        <CircularProgress color="inherit" />
-        <Typography variant="body1">{deleteProgressMessage || 'Working...'}</Typography>
+        <Box
+          sx={{
+            minWidth: 320,
+            maxWidth: '80vw',
+            px: 3,
+            py: 2.5,
+            borderRadius: 2,
+            bgcolor: 'background.paper',
+            color: 'text.primary',
+            boxShadow: 24,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+            <CircularProgress size={20} />
+            <Typography variant="body1">{deleteProgressMessage || 'Working...'}</Typography>
+          </Box>
+          <LinearProgress />
+        </Box>
       </Backdrop>
       <Snackbar
         open={showSnackBar}

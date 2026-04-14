@@ -78,9 +78,9 @@ const DraggableTreeItem = ({
 
   const isLinkedItem = Boolean(item.is_linked);
   const isLockedList = item.item_type === MEMORY_ITEM_TYPES.LIST && Boolean(item.is_locked);
-  const canStartNestDrag = !isLinkedItem && !item.is_structure_locked;
+  const canStartNestDrag = !item.is_structure_locked;
   const parentSortMode = normalizeMemorySortMode(item.parent_sort_mode);
-  const canStartReorderDrag = !isLinkedItem && Boolean(item.can_reorder);
+  const canStartReorderDrag = Boolean(item.can_reorder);
   const canAcceptNestedChildren = !isLinkedItem && !Boolean(item.blocks_child_structure);
   const canCreateChild = !isLinkedItem && !Boolean(item.blocks_child_structure);
   const showReorderHandle = isHovered || reorderDropIndicator?.draggedItemId === item.id;
@@ -98,10 +98,6 @@ const DraggableTreeItem = ({
   }, [item.item_type]);
 
   const reorderHandleTitle = useMemo(() => {
-    if (isLinkedItem) {
-      return 'Linked rows cannot be reordered here.';
-    }
-
     if (item.parent_is_locked) {
       return 'This list is locked. Reordering is disabled.';
     }
@@ -124,6 +120,8 @@ const DraggableTreeItem = ({
       id: item.id,
       parent_id: item.tree_parent_id ?? null,
       source_item_id: item.source_item_id ?? item.id,
+      is_linked: isLinkedItem,
+      link_id: item.link_id ?? null,
     }),
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
@@ -156,8 +154,6 @@ const DraggableTreeItem = ({
 
       if (dragType === TREE_ITEM_REORDER_DND_TYPE) {
         return (
-          !isLinkedItem &&
-          !draggedItem?.is_linked &&
           draggedItem?.id !== item.id &&
           String(draggedItem?.parent_id ?? '') === String(item.tree_parent_id ?? '')
         );
