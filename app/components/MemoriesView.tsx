@@ -26,7 +26,7 @@ import { useTreeViewApiRef } from '@mui/x-tree-view/hooks';
 import { DndProvider, useDrop, useDragLayer } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import DraggableTreeItem, { TREE_ITEM_NEST_DND_TYPE } from './DraggableTreeItem';
-import { Backdrop, Box, Card, CardContent, CircularProgress, Typography } from '@mui/material';
+import { Backdrop, Box, Card, CardContent, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import Button from '@mui/material/Button';
 import ButtonGroup from '@mui/material/ButtonGroup';
 import ItemDetailsTab from './ItemDetailsTab';
@@ -38,7 +38,7 @@ import {
   Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions
 } from '@mui/material';
-import { Lock as LockIcon, LockOpen as LockOpenIcon } from '@mui/icons-material';
+import { Add as AddIcon, Link as LinkIcon, Lock as LockIcon, LockOpen as LockOpenIcon } from '@mui/icons-material';
 import { Insert100Items } from '../function_lib/treeDataFunctions';
 
 interface MemoriesViewProps {
@@ -1659,6 +1659,85 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
           reorderDropIndicator={reorderDropIndicator}
         >
           {item.children && item.children.length > 0 ? mapTreeData(item.children, false) : null}
+          {expandedItems.includes(String(item.id)) ? (
+            <TreeItem
+              key={`${item.id}__inline-add-child`}
+              itemId={`${item.id}__inline-add-child`}
+              label={
+                <Box
+                  onClick={(event) => event.stopPropagation()}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    minHeight: '40px',
+                    width: '100%',
+                    pl: 1,
+                    pr: 1,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.75,
+                      px: 0.75,
+                      py: 0.25,
+                      borderRadius: 999,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.paper',
+                      boxShadow: 1,
+                    }}
+                  >
+                    <Tooltip
+                      title={
+                        !item.is_linked && !Boolean(item.blocks_child_structure)
+                          ? `Add child to ${item.name || 'this item'}`
+                          : 'Child rows cannot be added here.'
+                      }
+                    >
+                      <span>
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          disabled={item.is_linked || Boolean(item.blocks_child_structure)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleCreateNewChild(item.id);
+                          }}
+                        >
+                          <AddIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip
+                      title={
+                        !item.is_linked && !Boolean(item.blocks_child_structure)
+                          ? copiedLinkItem?.name
+                            ? `Paste link: ${copiedLinkItem.name}`
+                            : 'Copy a link first'
+                          : 'Links cannot be pasted here.'
+                      }
+                    >
+                      <span>
+                        <IconButton
+                          size="small"
+                          color="secondary"
+                          disabled={item.is_linked || Boolean(item.blocks_child_structure) || !copiedLinkItem?.sourceItemId}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handlePasteLink(item.id);
+                          }}
+                        >
+                          <LinkIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </Box>
+                </Box>
+              }
+            />
+          ) : null}
         </DraggableTreeItem>
     ));
     return result;
