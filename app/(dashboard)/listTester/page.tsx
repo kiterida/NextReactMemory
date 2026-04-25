@@ -5,6 +5,8 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import Dialog from '@mui/material/Dialog';
+import DialogContent from '@mui/material/DialogContent';
 import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
@@ -23,6 +25,7 @@ import {
   updateMemoryTestSessionProgress,
 } from '@/app/components/memoryTestHistory';
 import {
+  fetchMemoryItemById,
   fetchMemoryListRoots,
   getListDescendants,
   getTestableNodesForList,
@@ -42,6 +45,7 @@ type MemoryTestItem = {
   id: number;
   name: string | null;
   memory_key: string | number | null;
+  memory_image?: string | null;
   list_id?: number | null;
   item_type?: string | null;
   is_testable?: boolean;
@@ -97,6 +101,10 @@ export default function ListTesterPage() {
   const [currentTestIndex, setCurrentTestIndex] = React.useState(0);
   const [isLoadingMemoryTestItem, setIsLoadingMemoryTestItem] = React.useState(false);
   const [showMemoryName, setShowMemoryName] = React.useState(false);
+  const [showMemoryImage, setShowMemoryImage] = React.useState(false);
+  const [previewMemoryImage, setPreviewMemoryImage] = React.useState('');
+  const [isLoadingPreviewMemoryImage, setIsLoadingPreviewMemoryImage] = React.useState(false);
+  const [previewMemoryImageError, setPreviewMemoryImageError] = React.useState('');
   const [activeTestSourceLabel, setActiveTestSourceLabel] = React.useState('');
   const [activeTestSourceType, setActiveTestSourceType] = React.useState<'sublist' | 'root' | null>(null);
   const [activeTestListId, setActiveTestListId] = React.useState<number | null>(null);
@@ -116,6 +124,35 @@ export default function ListTesterPage() {
   const currentItemAlreadyRecorded = Boolean(
     memoryTestItem && sessionStatsRef.current.answeredItemIds.has(memoryTestItem.id),
   );
+
+  const handleOpenMemoryImage = React.useCallback(async () => {
+    if (!memoryTestItem) {
+      return;
+    }
+
+    setShowMemoryImage(true);
+    const initialImage = String(memoryTestItem.memory_image ?? '').trim();
+    setPreviewMemoryImage(initialImage);
+    setPreviewMemoryImageError('');
+
+    if (initialImage) {
+      return;
+    }
+
+    setIsLoadingPreviewMemoryImage(true);
+    try {
+      const fullItem = await fetchMemoryItemById(memoryTestItem.id);
+      const nextImage = String(fullItem?.memory_image ?? '').trim();
+      setPreviewMemoryImage(nextImage);
+      if (!nextImage) {
+        setPreviewMemoryImageError('This item does not have a memory image.');
+      }
+    } catch (error) {
+      setPreviewMemoryImageError('Could not load the memory image.');
+    } finally {
+      setIsLoadingPreviewMemoryImage(false);
+    }
+  }, [memoryTestItem]);
 
   const resetSessionTracking = React.useCallback((listId: number | null, totalItems: number) => {
     setActiveTestListId(listId);
@@ -508,14 +545,22 @@ export default function ListTesterPage() {
   );
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Paper sx={{ p: 3, maxWidth: 900 }}>
+    <Box sx={{ p: { xs: 1, sm: 3 } }}>
+      <Paper sx={{ p: { xs: 1.5, sm: 3 }, maxWidth: 900 }}>
         <Stack spacing={2}>
           <Typography variant="h5">List Tester</Typography>
           <Tabs
             value={activeTab}
             onChange={(_event, nextValue) => setActiveTab(nextValue)}
             variant="fullWidth"
+            sx={{
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                minHeight: { xs: 40, sm: 48 },
+                px: { xs: 1, sm: 2 },
+              },
+            }}
           >
             <Tab id="list-tester-tab-0" aria-controls="list-tester-tabpanel-0" label="Select List" />
             <Tab id="list-tester-tab-1" aria-controls="list-tester-tabpanel-1" label="Section" disabled={!selectedName} />
@@ -731,14 +776,23 @@ export default function ListTesterPage() {
                       fullWidth
                     />
 
-                    <Button
-                      variant="outlined"
-                      onClick={() => setShowMemoryName((previous) => !previous)}
-                      sx={{ alignSelf: 'flex-start' }}
-                      disabled={isSavingAnswer}
-                    >
-                      {showMemoryName ? 'Hide Name' : 'Show Name'}
-                    </Button>
+                    <Stack direction="row" spacing={1} sx={{ alignSelf: 'flex-start', flexWrap: 'wrap' }}>
+                     
+                      <Button
+                        variant="outlined"
+                        onClick={() => setShowMemoryName((previous) => !previous)}
+                        disabled={isSavingAnswer}
+                      >
+                        {showMemoryName ? 'Hide Name' : 'Show Name'}
+                      </Button>
+                       <Button
+                        variant="outlined"
+                        onClick={handleOpenMemoryImage}
+                        disabled={isSavingAnswer}
+                      >
+                        Show Image
+                      </Button>
+                    </Stack>
 
                     {showMemoryName ? (
                       <Stack spacing={1.5}>
@@ -786,6 +840,70 @@ export default function ListTesterPage() {
           </TabPanel>
         </Stack>
       </Paper>
+      <Dialog
+        open={showMemoryImage}
+        onClose={() => {
+          setShowMemoryImage(false);
+          setPreviewMemoryImageError('');
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogContent sx={{ position: 'relative', p: { xs: 1.5, sm: 2 } }}>
+          <IconButton
+            aria-label="Close image preview"
+            onClick={() => {
+              setShowMemoryImage(false);
+              setPreviewMemoryImageError('');
+            }}
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 1,
+              bgcolor: 'background.paper',
+              boxShadow: 1,
+              '&:hover': {
+                bgcolor: 'background.paper',
+              },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+          {isLoadingPreviewMemoryImage ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 240 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : null}
+          {!isLoadingPreviewMemoryImage && previewMemoryImageError ? (
+            <Alert severity="info" sx={{ mt: 4 }}>
+              {previewMemoryImageError}
+            </Alert>
+          ) : null}
+          {!isLoadingPreviewMemoryImage && previewMemoryImage ? (
+            <Box
+              sx={{
+                mt: 4,
+                p: { xs: 1.5, sm: 2 },
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                backgroundColor: 'background.paper',
+              }}
+            >
+              <Typography
+                variant="body1"
+                sx={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {previewMemoryImage}
+              </Typography>
+            </Box>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

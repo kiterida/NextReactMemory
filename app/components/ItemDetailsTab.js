@@ -474,7 +474,29 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs value={value} onChange={handleChange} aria-label="basic tabs">
+        <Tabs
+          value={value}
+          onChange={handleChange}
+          aria-label="basic tabs"
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            '& .MuiTabs-flexContainer': {
+              flexWrap: 'nowrap',
+            },
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              whiteSpace: 'nowrap',
+              minHeight: { xs: 40, sm: 48 },
+              px: { xs: 1.5, sm: 2 },
+              fontSize: { xs: '0.8rem', sm: '0.875rem' },
+              minWidth: { xs: 'auto', sm: 90 },
+            },
+          }}
+        >
           <Tab label="View" {...a11yProps(0)} />
           <Tab label="Item" {...a11yProps(1)} />
           <Tab label="Description" {...a11yProps(2)} />
@@ -909,8 +931,6 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
 };
 
 export default ItemDetailsTab;
-
-
 
 
 

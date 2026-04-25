@@ -282,6 +282,17 @@ export default function Layout(props: { children: React.ReactNode }) {
         }
       : undefined;
 
+  const pageContainerSx = {
+    maxWidth: '100% !important',
+    margin: '0 !important',
+    px: { xs: 1, sm: 2 },
+    py: 0,
+    '& > .MuiStack-root': {
+      my: { xs: 0.5, sm: 2 },
+      gap: { xs: 0.5, sm: 2 },
+    },
+  };
+
   const contentSx = {
     maxWidth: '100% !important',
     margin: '0 !important',
@@ -317,6 +328,7 @@ export default function Layout(props: { children: React.ReactNode }) {
   function CustomPageToolbar() {
     const currentPathname = usePathname();
     const isDashboardPage = currentPathname.startsWith('/dashboards/');
+    const listTesterPage = currentPathname === '/listTester';
     const memoryTesterPage = currentPathname === '/memoryTester';
 
     if (isDashboardPage) {
@@ -347,6 +359,10 @@ export default function Layout(props: { children: React.ReactNode }) {
           </Tooltip>
         </PageHeaderToolbar>
       );
+    }
+
+    if (listTesterPage) {
+      return <PageHeaderToolbar />;
     }
 
     return (
@@ -481,7 +497,14 @@ export default function Layout(props: { children: React.ReactNode }) {
             {props.children}
           </Box>
         ) : (
-          <PageContainer title={title} sx={sxOverride} {...(renderHeader ? { slots: { header: CustomPageHeaderComponent } } : {})}>
+          <PageContainer
+            title={title}
+            sx={{
+              ...pageContainerSx,
+              ...sxOverride,
+            }}
+            {...(renderHeader ? { slots: { header: CustomPageHeaderComponent } } : {})}
+          >
             {props.children}
           </PageContainer>
         )}
