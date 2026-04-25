@@ -20,3 +20,34 @@ create index if not exists time_tracking_sessions_started_at_idx
 
 create index if not exists time_tracking_sessions_is_running_idx
   on public.time_tracking_sessions (is_running);
+
+alter table public.time_tracking_sessions enable row level security;
+
+drop policy if exists "time_tracking_sessions_select_anon" on public.time_tracking_sessions;
+create policy "time_tracking_sessions_select_anon"
+on public.time_tracking_sessions
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "time_tracking_sessions_insert_anon" on public.time_tracking_sessions;
+create policy "time_tracking_sessions_insert_anon"
+on public.time_tracking_sessions
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "time_tracking_sessions_update_anon" on public.time_tracking_sessions;
+create policy "time_tracking_sessions_update_anon"
+on public.time_tracking_sessions
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "time_tracking_sessions_delete_anon" on public.time_tracking_sessions;
+create policy "time_tracking_sessions_delete_anon"
+on public.time_tracking_sessions
+for delete
+to anon, authenticated
+using (true);

@@ -13,10 +13,12 @@ import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import { R2ImageGalleryDialog } from './R2ImageGalleryButton';
+import CodeSnippet from './CodeSnippet';
 import MemoryItemWebLinksTab from './MemoryItemWebLinksTab';
 import {
   DEFAULT_MEMORY_SORT_MODE,
   MEMORY_SORT_MODE_OPTIONS,
+  getMemoryItemWebLinks,
   isMemoryContainerNode,
   normalizeMemorySortMode,
 } from './memoryData';
@@ -62,6 +64,7 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
   const [headerImageUploading, setHeaderImageUploading] = React.useState(false);
   const [isHeaderDragActive, setIsHeaderDragActive] = React.useState(false);
   const [isQuillReady, setIsQuillReady] = React.useState(false);
+  const [viewLinks, setViewLinks] = React.useState([]);
   const quillEditorRef = React.useRef(null);
   const quillToolbarRef = React.useRef(null);
   const quillInstanceRef = React.useRef(null);
@@ -427,22 +430,201 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
     };
   }, [onRegisterRichTextDraftGetter]);
 
+  React.useEffect(() => {
+    let isActive = true;
+
+    const run = async () => {
+      const memoryItemId = selectedItem?.source_item_id ?? selectedItem?.id ?? null;
+      if (!memoryItemId) {
+        setViewLinks([]);
+        return;
+      }
+
+      try {
+        const links = await getMemoryItemWebLinks(memoryItemId);
+        if (isActive) {
+          setViewLinks(links);
+        }
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+        console.error('Failed to load memory item web links for view tab:', error);
+        setViewLinks([]);
+      }
+    };
+
+    run();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedItem?.id, selectedItem?.source_item_id]);
+
   const canConfigureSortMode = !selectedItem?.is_linked && isMemoryContainerNode(selectedItem);
+  const hasViewMemoryMeta = textDraft.memory_key || textDraft.row_order;
+  const hasViewName = Boolean(textDraft.name);
+  const hasViewHeaderImage = Boolean(textDraft.header_image);
+  const hasViewLinks = viewLinks.length > 0;
+  const hasViewMemoryImage = Boolean(textDraft.memory_image);
+  const hasViewDescription = Boolean(textDraft.description);
+  const hasViewCode = Boolean(textDraft.code_snippet);
+  const hasViewRichText = Boolean(selectedItemRichText && selectedItemRichText !== '<p><br></p>');
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tabs value={value} onChange={handleChange} aria-label="basic tabs">
-          <Tab label="Item" {...a11yProps(0)} />
-          <Tab label="Description" {...a11yProps(1)} />
-          <Tab label="Code Snippet" {...a11yProps(2)} />
-          <Tab label="Links" {...a11yProps(3)} />
-          <Tab label="Header Image" {...a11yProps(4)} />
-          <Tab label="React-Quill" {...a11yProps(5)} />
+          <Tab label="View" {...a11yProps(0)} />
+          <Tab label="Item" {...a11yProps(1)} />
+          <Tab label="Description" {...a11yProps(2)} />
+          <Tab label="Code Snippet" {...a11yProps(3)} />
+          <Tab label="Links" {...a11yProps(4)} />
+          <Tab label="Header Image" {...a11yProps(5)} />
+          <Tab label="React-Quill" {...a11yProps(6)} />
         </Tabs>
       </Box>
 
       <CustomTabPanel value={value} index={0}>
+        <Stack spacing={2.5}>
+          {hasViewMemoryMeta ? (
+            <Box>
+            <Typography variant="overline" color="text.secondary">Memory Key: </Typography>
+              {textDraft.memory_key ? `${textDraft.memory_key}` : ''}
+            
+            <span style={{ marginLeft: '18px' }}>
+              {textDraft.memory_key && textDraft.row_order ? ' ' : ''}
+            </span>
+          <Typography variant="overline" color="text.secondary">Item Order: </Typography>
+        
+              {textDraft.row_order ? `${textDraft.row_order}` : ''}
+ 
+          </Box>
+          ) : null}
+
+          {hasViewName ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Memory Name</Typography>
+              <Typography variant="body1">{textDraft.name}</Typography>
+            </Box>
+          ) : null}
+
+          {hasViewHeaderImage ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Header Image</Typography>
+              <Box
+                component="img"
+                src={textDraft.header_image}
+                alt={textDraft.name || 'Header image'}
+                sx={{
+                  width: '100%',
+                  maxHeight: 280,
+                  objectFit: 'cover',
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  backgroundColor: 'grey.100',
+                }}
+              />
+            </Box>
+          ) : null}
+
+          {hasViewLinks ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Links</Typography>
+              <Stack spacing={1}>
+                {viewLinks.map((link) => (
+                  <Box key={link.id} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                    {link.link_heading ? (
+                      <Typography variant="subtitle2">{link.link_heading}</Typography>
+                    ) : null}
+                    {link.url ? (
+                      <Typography
+                        component="a"
+                        href={link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ display: 'block', color: 'primary.main', wordBreak: 'break-all', textDecoration: 'none' }}
+                      >
+                        {link.url}
+                      </Typography>
+                    ) : null}
+                    {link.description ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {link.description}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          ) : null}
+
+          {hasViewMemoryImage ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Memory Image</Typography>
+              <Box
+                component="img"
+                src={textDraft.memory_image}
+                alt={textDraft.name || 'Memory image'}
+                sx={{
+                  width: '100%',
+                  maxHeight: 320,
+                  objectFit: 'contain',
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  backgroundColor: 'grey.100',
+                }}
+              />
+            </Box>
+          ) : null}
+
+          {hasViewDescription ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Memory Description</Typography>
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{textDraft.description}</Typography>
+            </Box>
+          ) : null}
+
+          {hasViewCode ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Code</Typography>
+              <Box sx={{ mt: 0.5 }}>
+                <CodeSnippet code={textDraft.code_snippet} />
+              </Box>
+            </Box>
+          ) : null}
+
+          {hasViewRichText ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Quill</Typography>
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  '& img': { maxWidth: '100%', height: 'auto' },
+                  '& pre': {
+                    overflow: 'auto',
+                    p: 1.5,
+                    borderRadius: 1,
+                    bgcolor: 'grey.100',
+                  },
+                }}
+                dangerouslySetInnerHTML={{ __html: selectedItemRichText }}
+              />
+            </Box>
+          ) : null}
+
+          {!hasViewMemoryMeta && !hasViewName && !hasViewHeaderImage && !hasViewLinks && !hasViewMemoryImage && !hasViewDescription && !hasViewCode && !hasViewRichText ? (
+            <Typography color="text.secondary">No view data available for this item.</Typography>
+          ) : null}
+        </Stack>
+      </CustomTabPanel>
+
+      <CustomTabPanel value={value} index={1}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
           <TextField
             label="Memory Key"
@@ -499,9 +681,18 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
             </Select>
           </FormControl>
         ) : null}
+
+         {hasViewCode ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Code</Typography>
+              <Box sx={{ mt: 0.5 }}>
+                <CodeSnippet code={textDraft.code_snippet} />
+              </Box>
+            </Box>
+          ) : null}
       </CustomTabPanel>
 
-      <CustomTabPanel value={value} index={1}>
+      <CustomTabPanel value={value} index={2}>
         <TextField
           label="Description"
           value={textDraft.description}
@@ -509,7 +700,7 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
           onBlur={flushPendingTextDraft}
           fullWidth
           multiline
-          minRows={12}
+          minRows={8}
           margin="normal"
           sx={{
             '& .MuiInputBase-inputMultiline': {
@@ -518,9 +709,17 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
             },
           }}
         />
+         {hasViewCode ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Code</Typography>
+              <Box sx={{ mt: 0.5 }}>
+                <CodeSnippet code={textDraft.code_snippet} />
+              </Box>
+            </Box>
+          ) : null}
       </CustomTabPanel>
 
-      <CustomTabPanel value={value} index={2}>
+      <CustomTabPanel value={value} index={3}>
         <TextField
           label="Code Snippet"
           value={textDraft.code_snippet}
@@ -528,16 +727,30 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
           onBlur={flushPendingTextDraft}
           fullWidth
           multiline
-          rows={4}
+          minRows={8}
           margin="normal"
+                    sx={{
+            '& .MuiInputBase-inputMultiline': {
+              minHeight: '5vh',
+              resize: 'vertical',
+            },
+          }}
         />
-      </CustomTabPanel>
-
-      <CustomTabPanel value={value} index={3}>
-        <MemoryItemWebLinksTab selectedItem={selectedItem} onShowMessage={onShowMessage} />
+         {hasViewCode ? (
+            <Box>
+              <Typography variant="overline" color="text.secondary">Code</Typography>
+              <Box sx={{ mt: 0.5 }}>
+                <CodeSnippet code={textDraft.code_snippet} />
+              </Box>
+            </Box>
+          ) : null}
       </CustomTabPanel>
 
       <CustomTabPanel value={value} index={4}>
+        <MemoryItemWebLinksTab selectedItem={selectedItem} onShowMessage={onShowMessage} />
+      </CustomTabPanel>
+
+      <CustomTabPanel value={value} index={5}>
         <Stack spacing={2}>
           {selectedItem.header_image ? (
             <Box
@@ -639,7 +852,7 @@ const ItemDetailsTab = ({ selectedItem, setSelectedItem, onShowMessage, onRegist
         </Stack>
       </CustomTabPanel>
 
-      <CustomTabPanel value={value} index={5}>
+      <CustomTabPanel value={value} index={6}>
         <Box
           className="ql-toolbar ql-snow"
           ref={quillToolbarRef}

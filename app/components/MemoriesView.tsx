@@ -2179,7 +2179,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
               </Box>
             ) : null}
 
-            {selectedItem.description && (
+            {/*selectedItem.description && (
               <Box sx={{ flexShrink: 0, overflow: 'auto', maxHeight: '400px', marginBottom: '10px' }}>
                 <Card>
                   <CardContent
@@ -2192,8 +2192,8 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
                   </CardContent>
                 </Card>
               </Box>
-            )}
-            {selectedItem.code_snippet && (
+            )*/}
+            {/*selectedItem.code_snippet && (
               <Box sx={{ marginBottom: 2 }}>
                 <CodeSnippet code={selectedItem.code_snippet} />
               </Box>
