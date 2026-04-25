@@ -2112,7 +2112,10 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         flexDirection: { xs: 'column', lg: 'row' },
         gap: 2,
         p: 0,
-        height: availableHeight ? `${availableHeight - 16}px` : 'auto',
+        height: {
+          xs: 'auto',
+          lg: availableHeight ? `${Math.max(availableHeight - 16, 0)}px` : 'auto',
+        },
         boxSizing: 'border-box',
       }}
     >
@@ -2121,7 +2124,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         sx={{
           width: { xs: '100%', lg: '35%' },
           overflow: 'auto',
-          height: { xs: '50%', lg: '100%' },
+          height: { xs: 'auto', lg: '100%' },
           borderRight: { lg: '1px solid #ccc' },
           pr: 2,
         }}
@@ -2146,7 +2149,7 @@ const MemoriesView = ({ filterStarred = false, focusId, singleListView }: Memori
         sx={{
           width: { xs: '100%', lg: '65%' },
           overflow: 'auto',
-          height: { xs: '50%', lg: '100%' },
+          height: { xs: 'auto', lg: '100%' },
           pl: 2,
         }}
       >

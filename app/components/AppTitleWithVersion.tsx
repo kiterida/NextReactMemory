@@ -48,11 +48,11 @@ export default function AppTitleWithVersion() {
         direction="row"
         alignItems="center"
         sx={{
-          minHeight: 40,
+          minHeight: { xs: 32, sm: 40 },
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', alignSelf: 'center', gap: 1 }}>
-          <CenterFocusWeakIcon fontSize="small" sx={{ color: 'text.primary' }} />
+          <CenterFocusWeakIcon sx={{ color: 'text.primary', fontSize: { xs: '1.25rem', sm: '1.25rem' } }} />
         </Box>
         <Typography
           variant="h6"
@@ -61,9 +61,10 @@ export default function AppTitleWithVersion() {
             alignItems: 'center',
             color: 'primary.main',
             fontWeight: 700,
-            ml: 1,
+            ml: { xs: 0.75, sm: 1 },
             whiteSpace: 'nowrap',
             lineHeight: 1,
+            fontSize: { xs: '1rem', sm: '1.25rem' },
           }}
         >
           Memory Core
@@ -72,7 +73,7 @@ export default function AppTitleWithVersion() {
           <Typography
             variant="caption"
             sx={{
-              display: 'flex',
+              display: { xs: 'none', sm: 'flex' },
               alignItems: 'center',
               alignSelf: 'center',
               ml: 1,

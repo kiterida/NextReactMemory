@@ -292,6 +292,14 @@ export default function Layout(props: { children: React.ReactNode }) {
     p: 0,
   };
 
+  const singleListViewContentSx = {
+    ...contentSx,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    minHeight: 0,
+    WebkitOverflowScrolling: 'touch',
+  };
+
   const isSingleListViewRoute = pathname === '/singleListView';
   const showSearchToolbar = true;
 
@@ -435,7 +443,33 @@ export default function Layout(props: { children: React.ReactNode }) {
   return (
     <TimeTrackerProvider>
       <DashboardLayout
-        sx={{ height: '100vh', overflow: 'hidden' }}
+        sx={{
+          minHeight: '100dvh',
+          height: 'auto',
+          overflowX: 'hidden',
+          overflowY: 'auto',
+          '& > .MuiAppBar-root > .MuiToolbar-root': {
+            minHeight: { xs: 80, sm: 64 },
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            py: { xs: 1, sm: 0 },
+          },
+          '& > .MuiBox-root:last-child > .MuiToolbar-root': {
+            minHeight: { xs: 80, sm: 64 },
+          },
+          '& > .MuiAppBar-root .MuiIconButton-root': {
+            p: { xs: 0.625, sm: 1 },
+          },
+          '& > .MuiAppBar-root .MuiIconButton-root .MuiSvgIcon-root': {
+            fontSize: { xs: '1.25rem', sm: '1.5rem' },
+          },
+          '& > .MuiAppBar-root .MuiAvatar-root': {
+            width: { xs: 28, sm: 32 },
+            height: { xs: 28, sm: 32 },
+          },
+          '& > .MuiAppBar-root .MuiBadge-badge': {
+            transform: { xs: 'scale(0.85) translate(35%, -35%)', sm: 'scale(1) translate(50%, -50%)' },
+          },
+        }}
         slots={{
           appTitle: AppTitleWithVersion,
           sidebarFooter: DashboardSidebarFooter,
@@ -443,7 +477,7 @@ export default function Layout(props: { children: React.ReactNode }) {
         }}
       >
         {isSingleListViewRoute ? (
-          <Box sx={contentSx}>
+          <Box sx={singleListViewContentSx}>
             {props.children}
           </Box>
         ) : (
